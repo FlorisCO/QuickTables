@@ -810,15 +810,33 @@
     if (state.solvedCount >= total) { endGame(true); return; }
 
     var remaining = total - state.solvedCount;
-    var pick = Math.floor(state.rng() * remaining);   // seeded: replayable draw
+    // Cells excluded from this draw: the previous question (if unsolved)
+    // and its commutative mirror y×x (if unsolved) — so neither the same
+    // question nor its transposed twin appears back-to-back. Exclusions
+    // are dropped (mirror first) if they would empty the pool.
+    // NOTE: this rule is part of the replayable sequence — verify.html
+    // implements the identical exclusion.
+    var prev = state.current;
+    var excl = [];
+    if (prev) {
+      if (!state.solved[prev.r][prev.c]) excl.push([prev.r, prev.c]);
+      if (prev.r !== prev.c && !state.solved[prev.c][prev.r]) excl.push([prev.c, prev.r]);
+      while (excl.length && remaining - excl.length < 1) excl.pop();
+    }
+    var poolSize = remaining - excl.length;
+    var pick = Math.floor(state.rng() * poolSize);   // seeded: replayable draw
     var r = 0, c = 0, i = 0;
     outer:
     for (r = 1; r <= state.max; r++) {
       for (c = 1; c <= state.max; c++) {
-        if (!state.solved[r][c]) {
-          if (i === pick) break outer;
-          i++;
+        if (state.solved[r][c]) continue;
+        var isExcl = false;
+        for (var e = 0; e < excl.length; e++) {
+          if (excl[e][0] === r && excl[e][1] === c) { isExcl = true; break; }
         }
+        if (isExcl) continue;
+        if (i === pick) break outer;
+        i++;
       }
     }
 
@@ -1105,8 +1123,16 @@
     };
   }
 
+  // Version of the draw/replay algorithm. Bump this whenever the cell-pick
+  // rules change (exclusions, PRNG, scan order, format); the verifier keeps
+  // one replay implementation per version so old certificates stay checkable.
+  // History: 2.0 = seeded mulberry32, prev question + commutative mirror
+  // excluded from the next draw when unsolved (dropped mirror-first if the
+  // pool would empty).
+  var PROOF_VERSION = "2.0";
+
   // The plain-text proof line printed on the certificate:
-  //   name|tablesMax|gameSeconds|questionSeconds|seedHex|score|sequence
+  //   version|name|tablesMax|gameSeconds|questionSeconds|seedHex|score|sequence
   // The sequence lists EVERY question shown, in the order it was shown:
   // "r.c+" (solved) or "r.c-" (wrong / timed out). Each shown question
   // consumed exactly one PRNG draw, so the whole sequence must replay
@@ -1119,7 +1145,7 @@
     var seq = state.presLog.map(function (e) {
       return e[0] + "." + e[1] + (e[2] === 1 ? "+" : "-");
     }).join(",");
-    return [safe, state.max, state.gameSec, state.qSec, seedHex, score, seq].join("|");
+    return [PROOF_VERSION, safe, state.max, state.gameSec, state.qSec, seedHex, score, seq].join("|");
   }
 
   function downloadCertificate() {

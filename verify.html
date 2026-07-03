@@ -62,7 +62,7 @@
   </p>
   <div class="card">
     <textarea id="input" spellcheck="false"
-      placeholder="Naam|12|60|8|1A2B3C4D|42|7.8+,3.4-,3.4+,..."></textarea>
+      placeholder="2.0|Naam|12|60|8|1A2B3C4D|42|7.8+,3.4-,9.2+,..."></textarea>
     <button id="run">Verify</button>
     <div id="result"></div>
   </div>
@@ -71,9 +71,12 @@
 <script>
 (function () {
   "use strict";
-  // NOTE: cyrb53, codeFromText, mulberry32, the proof format, and the
-  // cell-pick scan below must stay byte-for-byte compatible with the ones
-  // in the game (maaltafels/index.html). If one changes, change both.
+  // NOTE: cyrb53, codeFromText, mulberry32, the proof format, and each
+  // replay implementation below must stay byte-for-byte compatible with
+  // the game (maaltafels/index.html) at the corresponding PROOF_VERSION.
+  // When the game's draw rules change: bump PROOF_VERSION there, add a new
+  // replay function here, and KEEP the old ones so old certificates stay
+  // verifiable.
 
   function cyrb53(str) {
     var h1 = 0xdeadbeef, h2 = 0x41c6ce57, ch;
@@ -100,74 +103,107 @@
     };
   }
 
-  // Verify a proof line:
-  //   name|tablesMax|gameSeconds|questionSeconds|seedHex|score|sequence
-  // 1. The sequence must replay exactly from the seed: each shown question
-  //    is one PRNG draw picking from the remaining unsolved cells with the
-  //    same row-major scan the game uses.
-  // 2. The number of "+" entries must equal the declared score.
-  // 3. The recomputed code must match the one printed on the certificate
-  //    (the reader compares those by eye).
-  function verify(raw) {
-    var text = (raw || "").replace(/\s+/g, "");
-    if (!text) return { error: "Nothing to verify." };
-    var parts = text.split("|");
-    if (parts.length !== 7) return { error: "Expected 7 fields separated by | — got " + parts.length + "." };
+  /* ---------------- replay implementations, one per version ------------ */
+  // Each takes (seed, max, tokens) and returns:
+  //   { failAt, expected, got, solvedCount }
+  // where failAt === -1 means the whole sequence replays cleanly.
 
-    var name = parts[0];
-    var max = parseInt(parts[1], 10), gameSec = parseInt(parts[2], 10),
-        qSec = parseInt(parts[3], 10), declaredScore = parseInt(parts[5], 10);
-    if (!(max >= 2 && max <= 12) || !gameSec || !qSec || isNaN(declaredScore)) {
-      return { error: "Settings fields are not valid numbers." };
-    }
-    if (!/^[0-9A-F]{8}$/i.test(parts[4])) return { error: "Seed is not 8 hex characters." };
-    var seed = parseInt(parts[4], 16);
-
-    var tokens = parts[6] === "" ? [] : parts[6].split(",");
+  // v2.0 — seeded mulberry32; the previous question and its commutative
+  // mirror (y×x) are excluded from the next draw when still unsolved,
+  // dropped mirror-first if they would empty the pool; cells scanned in
+  // row-major order.
+  function replayV20(seed, max, tokens) {
     var rng = mulberry32(seed);
     var solved = {};
     var remaining = max * max;
     var solvedCount = 0;
-    var failAt = -1, expected = null, got = null;
+    var prevR = 0, prevC = 0;
 
     for (var i = 0; i < tokens.length; i++) {
       var m = /^(\d+)\.(\d+)([+-])$/.exec(tokens[i]);
-      if (!m) { failAt = i; got = tokens[i]; expected = "r.c+ or r.c-"; break; }
+      if (!m) return { failAt: i, expected: "r.c+ or r.c-", got: tokens[i], solvedCount: solvedCount };
       var r = parseInt(m[1], 10), c = parseInt(m[2], 10);
 
-      // replay the game's draw: pick-th unsolved cell in row-major order
-      var pick = Math.floor(rng() * remaining);
+      var excl = [];
+      if (prevR !== 0) {
+        if (!solved[prevR + "-" + prevC]) excl.push([prevR, prevC]);
+        if (prevR !== prevC && !solved[prevC + "-" + prevR]) excl.push([prevC, prevR]);
+        while (excl.length && remaining - excl.length < 1) excl.pop();
+      }
+      var poolSize = remaining - excl.length;
+      var pick = Math.floor(rng() * poolSize);
       var er = 0, ec = 0, k = 0;
       outer:
       for (er = 1; er <= max; er++) {
         for (ec = 1; ec <= max; ec++) {
-          if (!solved[er + "-" + ec]) {
-            if (k === pick) break outer;
-            k++;
+          if (solved[er + "-" + ec]) continue;
+          var isExcl = false;
+          for (var x = 0; x < excl.length; x++) {
+            if (excl[x][0] === er && excl[x][1] === ec) { isExcl = true; break; }
           }
+          if (isExcl) continue;
+          if (k === pick) break outer;
+          k++;
         }
       }
       if (er !== r || ec !== c) {
-        failAt = i; expected = er + "." + ec; got = r + "." + c;
-        break;
+        return { failAt: i, expected: er + "." + ec, got: r + "." + c, solvedCount: solvedCount };
       }
       if (m[3] === "+") {
         solved[r + "-" + c] = true;
         remaining--;
         solvedCount++;
       }
+      prevR = r; prevC = c;
+    }
+    return { failAt: -1, expected: null, got: null, solvedCount: solvedCount };
+  }
+
+  var ALGORITHMS = {
+    "2.0": replayV20
+    // future: "3.0": replayV30, ... — never delete old entries
+  };
+
+  /* ---------------------------- verification --------------------------- */
+  // Proof line format (from version 2.0 onward):
+  //   version|name|tablesMax|gameSeconds|questionSeconds|seedHex|score|sequence
+  function verify(raw) {
+    var text = (raw || "").replace(/\s+/g, "");
+    if (!text) return { error: "Nothing to verify." };
+    var parts = text.split("|");
+    if (parts.length !== 8) return { error: "Expected 8 fields separated by | — got " + parts.length + "." };
+
+    var version = parts[0];
+    if (!/^\d+(\.\d+)?$/.test(version)) return { error: "First field is not a version number." };
+    var replay = ALGORITHMS[version];
+    if (!replay) {
+      return { error: "Unknown algorithm version " + version + " — this verifier supports: " +
+        Object.keys(ALGORITHMS).join(", ") + ". A newer copy of this page may be needed." };
     }
 
+    var name = parts[1];
+    var max = parseInt(parts[2], 10), gameSec = parseInt(parts[3], 10),
+        qSec = parseInt(parts[4], 10), declaredScore = parseInt(parts[6], 10);
+    if (!(max >= 2 && max <= 12) || !gameSec || !qSec || isNaN(declaredScore)) {
+      return { error: "Settings fields are not valid numbers." };
+    }
+    if (!/^[0-9A-F]{8}$/i.test(parts[5])) return { error: "Seed is not 8 hex characters." };
+    var seed = parseInt(parts[5], 16);
+
+    var tokens = parts[7] === "" ? [] : parts[7].split(",");
+    var rep = replay(seed, max, tokens);
+
     return {
+      version: version,
       name: name.replace(/_/g, " "),
       max: max, gameSec: gameSec, qSec: qSec,
       declaredScore: declaredScore,
-      replayedScore: solvedCount,
+      replayedScore: rep.solvedCount,
       questionsShown: tokens.length,
-      seedHex: parts[4].toUpperCase(),
-      seqOk: failAt === -1,
-      failAt: failAt, expected: expected, got: got,
-      scoreOk: failAt === -1 && solvedCount === declaredScore,
+      seedHex: parts[5].toUpperCase(),
+      seqOk: rep.failAt === -1,
+      failAt: rep.failAt, expected: rep.expected, got: rep.got,
+      scoreOk: rep.failAt === -1 && rep.solvedCount === declaredScore,
       code: codeFromText(text)
     };
   }
@@ -190,6 +226,7 @@
       (ok ? '✓ Consistent — now compare the code below with the one printed on the certificate.'
           : '✗ This data does not describe a real game.') + '</div>';
     html += '<table>';
+    html += '<tr><td>Algorithm version</td><td class="mono">' + esc(res.version) + '</td></tr>';
     html += '<tr><td>Player</td><td>' + esc(res.name) + '</td></tr>';
     html += '<tr><td>Settings</td><td>tables up to ' + res.max + ' · ' + res.gameSec + ' s game · ' + res.qSec + ' s per question</td></tr>';
     html += '<tr><td>Seed</td><td class="mono">' + esc(res.seedHex) + '</td></tr>';
