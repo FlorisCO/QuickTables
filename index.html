@@ -197,10 +197,6 @@
     border-radius: 14px;
     transition: border-color .12s, background-color .12s;
   }
-  #answer::-webkit-outer-spin-button,
-  #answer::-webkit-inner-spin-button { -webkit-appearance: none; }
-  #answer[type="number"] { -moz-appearance: textfield; appearance: textfield; }
-
   .flash-good #answer { border-color: var(--good); background: var(--flash-good-bg); }
   .flash-bad  #answer { border-color: var(--wrong); background: var(--flash-bad-bg); }
 
@@ -388,7 +384,7 @@
       <div class="card question-card">
         <div class="question-line">
           <span id="question">– × – =</span>
-          <input type="number" id="answer" inputmode="numeric" pattern="[0-9]*"
+          <input type="text" id="answer" inputmode="numeric" pattern="[0-9]*"
                  enterkeyhint="go" autocomplete="off" aria-label="Jouw antwoord">
           <button id="btn-ok" class="okbtn" type="button" aria-label="Controleer">✓</button>
         </div>
@@ -1318,7 +1314,24 @@
   });
 
   $("answer").addEventListener("keydown", function (e) {
-    if (e.key === "Enter") { e.preventDefault(); submitAnswer(); }
+    if (e.key === "Enter") { e.preventDefault(); submitAnswer(); return; }
+    // Let navigation/editing keys and any key combo with a modifier through
+    // untouched; block every other printable key that isn't a plain digit.
+    // This is what stops a stray "+" (common on numeric keypads next to
+    // Enter) from ever landing in the field.
+    var allowedControl = ["Backspace", "Delete", "Tab", "ArrowLeft", "ArrowRight",
+      "ArrowUp", "ArrowDown", "Home", "End", "Escape"];
+    if (allowedControl.indexOf(e.key) !== -1) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;         // allow copy/paste/select-all etc.
+    if (!/^[0-9]$/.test(e.key)) e.preventDefault();
+  });
+
+  // Defense in depth: paste, IME input, autofill, or any browser quirk that
+  // slips past keydown still gets scrubbed down to digits here, capped at 3
+  // characters since 144 is the largest possible product.
+  $("answer").addEventListener("input", function () {
+    var digits = this.value.replace(/[^0-9]/g, "").slice(0, 3);
+    if (digits !== this.value) this.value = digits;
   });
 
   // On-screen ✓ button: the reliable submit on mobile. preventDefault on
