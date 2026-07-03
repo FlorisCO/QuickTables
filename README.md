@@ -5,7 +5,7 @@ educational game from primary school that never made it past a single school's c
 The original's author no longer wants to maintain or share it, so this is a from-scratch
 reimplementation of the concept — same core idea, modern shell.
 
-**[Play it here](florisco.github.io/QuickTables)**
+**[Play it here](https://florisco.github.io/QuickTables)**
 
 ## How it works
 
