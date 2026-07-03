@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Certificate verifier</title>
+<meta name="robots" content="noindex">
+<style>
+  :root {
+    --bg: #eef1f6; --card: #fff; --ink: #1c2333; --muted: #6b7385;
+    --line: #dde2ec; --accent: #4353e8; --wrong: #e5484d; --good: #1c9e6e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, sans-serif;
+    font-size: 16px; line-height: 1.5;
+    display: flex; justify-content: center;
+    padding: clamp(12px, 4vw, 40px) 12px;
+  }
+  .app { width: 100%; max-width: 640px; }
+  h1 { font-size: 20px; font-weight: 800; margin-bottom: 4px; }
+  p.sub { color: var(--muted); font-size: 14px; margin-bottom: 16px; }
+  .card {
+    background: var(--card); border-radius: 16px; padding: clamp(16px, 4vw, 28px);
+    box-shadow: 0 1px 2px rgba(28,35,51,.06), 0 8px 24px rgba(28,35,51,.08);
+  }
+  textarea {
+    width: 100%; min-height: 110px; resize: vertical;
+    font-family: ui-monospace, Consolas, monospace; font-size: 13px;
+    padding: 10px; border-radius: 10px;
+    border: 1.5px solid var(--line); background: var(--bg); color: var(--ink);
+  }
+  textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button {
+    font: inherit; font-weight: 700; border: none; border-radius: 12px;
+    padding: 12px 24px; cursor: pointer;
+    background: var(--accent); color: #fff; margin-top: 12px;
+  }
+  #result { margin-top: 18px; }
+  .verdict { font-weight: 800; font-size: 18px; margin-bottom: 10px; }
+  .verdict.ok { color: var(--good); }
+  .verdict.bad { color: var(--wrong); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  td { padding: 5px 8px 5px 0; vertical-align: top; }
+  td:first-child { color: var(--muted); white-space: nowrap; }
+  .mono { font-family: ui-monospace, Consolas, monospace; }
+  .check { font-weight: 700; }
+  .check.ok { color: var(--good); }
+  .check.bad { color: var(--wrong); }
+  .note { color: var(--muted); font-size: 13px; margin-top: 14px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Certificate verifier</h1>
+  <p class="sub">
+    Paste the small data line from the bottom of a certificate below.
+    Line breaks from PDF copy/paste are fine — whitespace is ignored.
+    NL: plak de gegevensregel van onderaan het certificaat.
+    FR: colle la ligne de donn&eacute;es du bas du certificat.
+  </p>
+  <div class="card">
+    <textarea id="input" spellcheck="false"
+      placeholder="Naam|12|60|8|1A2B3C4D|42|7.8+,3.4-,3.4+,..."></textarea>
+    <button id="run">Verify</button>
+    <div id="result"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  // NOTE: cyrb53, codeFromText, mulberry32, the proof format, and the
+  // cell-pick scan below must stay byte-for-byte compatible with the ones
+  // in the game (maaltafels/index.html). If one changes, change both.
+
+  function cyrb53(str) {
+    var h1 = 0xdeadbeef, h2 = 0x41c6ce57, ch;
+    for (var i = 0; i < str.length; i++) {
+      ch = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+  }
+  function codeFromText(str) {
+    var hex = cyrb53(str).toString(16).toUpperCase();
+    while (hex.length < 12) hex = "0" + hex;
+    return hex.slice(-12).match(/.{1,4}/g).join("-");
+  }
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      var t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  // Verify a proof line:
+  //   name|tablesMax|gameSeconds|questionSeconds|seedHex|score|sequence
+  // 1. The sequence must replay exactly from the seed: each shown question
+  //    is one PRNG draw picking from the remaining unsolved cells with the
+  //    same row-major scan the game uses.
+  // 2. The number of "+" entries must equal the declared score.
+  // 3. The recomputed code must match the one printed on the certificate
+  //    (the reader compares those by eye).
+  function verify(raw) {
+    var text = (raw || "").replace(/\s+/g, "");
+    if (!text) return { error: "Nothing to verify." };
+    var parts = text.split("|");
+    if (parts.length !== 7) return { error: "Expected 7 fields separated by | — got " + parts.length + "." };
+
+    var name = parts[0];
+    var max = parseInt(parts[1], 10), gameSec = parseInt(parts[2], 10),
+        qSec = parseInt(parts[3], 10), declaredScore = parseInt(parts[5], 10);
+    if (!(max >= 2 && max <= 12) || !gameSec || !qSec || isNaN(declaredScore)) {
+      return { error: "Settings fields are not valid numbers." };
+    }
+    if (!/^[0-9A-F]{8}$/i.test(parts[4])) return { error: "Seed is not 8 hex characters." };
+    var seed = parseInt(parts[4], 16);
+
+    var tokens = parts[6] === "" ? [] : parts[6].split(",");
+    var rng = mulberry32(seed);
+    var solved = {};
+    var remaining = max * max;
+    var solvedCount = 0;
+    var failAt = -1, expected = null, got = null;
+
+    for (var i = 0; i < tokens.length; i++) {
+      var m = /^(\d+)\.(\d+)([+-])$/.exec(tokens[i]);
+      if (!m) { failAt = i; got = tokens[i]; expected = "r.c+ or r.c-"; break; }
+      var r = parseInt(m[1], 10), c = parseInt(m[2], 10);
+
+      // replay the game's draw: pick-th unsolved cell in row-major order
+      var pick = Math.floor(rng() * remaining);
+      var er = 0, ec = 0, k = 0;
+      outer:
+      for (er = 1; er <= max; er++) {
+        for (ec = 1; ec <= max; ec++) {
+          if (!solved[er + "-" + ec]) {
+            if (k === pick) break outer;
+            k++;
+          }
+        }
+      }
+      if (er !== r || ec !== c) {
+        failAt = i; expected = er + "." + ec; got = r + "." + c;
+        break;
+      }
+      if (m[3] === "+") {
+        solved[r + "-" + c] = true;
+        remaining--;
+        solvedCount++;
+      }
+    }
+
+    return {
+      name: name.replace(/_/g, " "),
+      max: max, gameSec: gameSec, qSec: qSec,
+      declaredScore: declaredScore,
+      replayedScore: solvedCount,
+      questionsShown: tokens.length,
+      seedHex: parts[4].toUpperCase(),
+      seqOk: failAt === -1,
+      failAt: failAt, expected: expected, got: got,
+      scoreOk: failAt === -1 && solvedCount === declaredScore,
+      code: codeFromText(text)
+    };
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  document.getElementById("run").addEventListener("click", function () {
+    var res = verify(document.getElementById("input").value);
+    var box = document.getElementById("result");
+    if (res.error) {
+      box.innerHTML = '<div class="verdict bad">✗ ' + esc(res.error) + '</div>';
+      return;
+    }
+    var ok = res.seqOk && res.scoreOk;
+    var html = '<div class="verdict ' + (ok ? 'ok' : 'bad') + '">' +
+      (ok ? '✓ Consistent — now compare the code below with the one printed on the certificate.'
+          : '✗ This data does not describe a real game.') + '</div>';
+    html += '<table>';
+    html += '<tr><td>Player</td><td>' + esc(res.name) + '</td></tr>';
+    html += '<tr><td>Settings</td><td>tables up to ' + res.max + ' · ' + res.gameSec + ' s game · ' + res.qSec + ' s per question</td></tr>';
+    html += '<tr><td>Seed</td><td class="mono">' + esc(res.seedHex) + '</td></tr>';
+    html += '<tr><td>Questions shown</td><td>' + res.questionsShown + '</td></tr>';
+    html += '<tr><td>Sequence replay</td><td class="check ' + (res.seqOk ? 'ok' : 'bad') + '">' +
+      (res.seqOk ? 'matches the seed'
+                 : 'diverges at question ' + (res.failAt + 1) + ' — expected ' + esc(res.expected) + ', found ' + esc(res.got)) +
+      '</td></tr>';
+    html += '<tr><td>Score</td><td class="check ' + (res.scoreOk ? 'ok' : 'bad') + '">declared ' + res.declaredScore +
+      ', replayed ' + res.replayedScore + (res.scoreOk ? ' ✓' : ' ✗') + '</td></tr>';
+    html += '<tr><td>Recomputed code</td><td class="mono" style="font-weight:700">' + res.code + '</td></tr>';
+    html += '</table>';
+    html += '<p class="note">A certificate is genuine when the sequence replays, the score matches, ' +
+      'and the recomputed code equals the code printed on the certificate.</p>';
+    box.innerHTML = html;
+  });
+})();
+</script>
+</body>
+</html>

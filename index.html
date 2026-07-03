@@ -1,0 +1,1374 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maaltafels</title>
+<style>
+  :root {
+    --bg: #eef1f6;
+    --card: #ffffff;
+    --ink: #1c2333;
+    --muted: #6b7385;
+    --line: #dde2ec;
+    --accent: #4353e8;
+    --accent-ink: #ffffff;
+    --wrong: #e5484d;
+    --good: #1c9e6e;
+    --flash-good-bg: #e3f6ee;
+    --flash-bad-bg: #fdebec;
+    --solved-l: 78%;
+    --solved-fg-l: 26%;
+    --radius: 16px;
+    --shadow: 0 1px 2px rgba(28,35,51,.06), 0 8px 24px rgba(28,35,51,.08);
+  }
+  [data-theme="dark"] {
+    --bg: #14161c;
+    --card: #1e2230;
+    --ink: #e8ebf2;
+    --muted: #9aa3b5;
+    --line: #2c3244;
+    --accent: #6d7bff;
+    --accent-ink: #ffffff;
+    --wrong: #ff6b70;
+    --good: #34c98e;
+    --flash-good-bg: #143528;
+    --flash-bad-bg: #3a1c1e;
+    --solved-l: 30%;
+    --solved-fg-l: 86%;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { min-height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: ui-rounded, "SF Pro Rounded", "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 16px;
+    line-height: 1.45;
+    display: flex;
+    justify-content: center;
+    padding: clamp(12px, 4vw, 40px) 12px;
+    -webkit-text-size-adjust: 100%;
+    transition: background-color .2s, color .2s;
+  }
+
+  .app { width: 100%; max-width: 560px; }
+
+  header.top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  header.top h1 {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    margin-right: auto;
+  }
+  .chips { display: flex; gap: 8px; align-items: center; }
+  .chip {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 14px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .chip b { color: var(--accent); }
+  .chip.time-low b { color: var(--wrong); }
+
+  .iconbtn {
+    width: 34px; height: 34px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--ink);
+    font-size: 16px;
+    line-height: 1;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  select#lang {
+    font: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    height: 34px;
+    padding: 0 8px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  .card {
+    background: var(--card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: clamp(16px, 4vw, 28px);
+  }
+
+  /* ---------- forms / buttons ---------- */
+  .field { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; }
+  .field + .field { border-top: 1px solid var(--line); }
+  .field label { font-weight: 600; }
+  .field .hint { display: block; font-size: 13px; font-weight: 400; color: var(--muted); }
+
+  input[type="number"], input[type="text"] {
+    font: inherit;
+    font-weight: 700;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1.5px solid var(--line);
+    border-radius: 10px;
+    padding: 8px 10px;
+  }
+  input[type="number"] {
+    font-variant-numeric: tabular-nums;
+    width: 5.5em;
+    text-align: center;
+  }
+  input[type="text"] { width: 11em; }
+  input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--accent); flex-shrink: 0; cursor: pointer; }
+  input:focus-visible, button:focus-visible, select:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  button {
+    font: inherit;
+    font-weight: 700;
+    border: none;
+    border-radius: 12px;
+    padding: 12px 24px;
+    cursor: pointer;
+    background: var(--bg);
+    color: var(--ink);
+  }
+  button.primary { background: var(--accent); color: var(--accent-ink); }
+  button.primary:hover { filter: brightness(1.08); }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: .45; cursor: default; }
+  button:disabled:active { transform: none; }
+  button.linklike {
+    background: none;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: underline;
+    padding: 8px 0;
+  }
+
+  .intro { color: var(--muted); font-size: 14px; margin: 16px 0 20px; }
+  .btnrow { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+  /* ---------- question ---------- */
+  .question-card { text-align: center; margin-bottom: 16px; position: relative; overflow: hidden; }
+  .question-line {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  #question {
+    font-size: clamp(34px, 9vw, 48px);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  #answer {
+    font-size: clamp(34px, 9vw, 48px);
+    font-weight: 800;
+    width: 2.6em;
+    padding: 2px 8px;
+    text-align: center;
+    background: var(--bg);
+    border: 2px solid var(--line);
+    border-radius: 14px;
+    transition: border-color .12s, background-color .12s;
+  }
+  #answer::-webkit-outer-spin-button,
+  #answer::-webkit-inner-spin-button { -webkit-appearance: none; }
+  #answer[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+  .flash-good #answer { border-color: var(--good); background: var(--flash-good-bg); }
+  .flash-bad  #answer { border-color: var(--wrong); background: var(--flash-bad-bg); }
+
+  .okbtn {
+    width: 56px;
+    height: 56px;
+    padding: 0;
+    border-radius: 14px;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-size: 26px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  /* ---------- on-screen keypad ---------- */
+  .keypad-card { padding: clamp(10px, 3vw, 16px); margin-bottom: 16px; }
+  .keypad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    user-select: none;
+  }
+  .keypad button {
+    font-size: 22px;
+    font-variant-numeric: tabular-nums;
+    padding: 13px 0;
+    border-radius: 12px;
+  }
+  .keypad button.kp-ok { background: var(--accent); color: var(--accent-ink); }
+
+  .qtimer-track {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 5px;
+    background: var(--line);
+  }
+  #qtimer {
+    height: 100%;
+    width: 100%;
+    background: var(--accent);
+    transform-origin: left center;
+  }
+
+  /* ---------- grid ---------- */
+  .grid-card { padding: clamp(10px, 3vw, 18px); }
+  .grid { display: grid; gap: 3px; user-select: none; }
+  .cell {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    background: var(--bg);
+    font-size: clamp(8px, 2.3vw, 12px);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: transparent;           /* unsolved cells show no number */
+    overflow: hidden;
+  }
+  /* solved cells: hue set per-cell in JS, lightness follows the theme */
+  .cell.solved {
+    background: hsl(var(--h), 55%, var(--solved-l));
+    color: hsl(var(--h), 45%, var(--solved-fg-l));
+    animation: pop .25s ease-out;
+  }
+  .cell.hdr {
+    background: transparent;
+    color: var(--muted);
+    font-size: clamp(9px, 2.4vw, 13px);
+  }
+  .cell.hdr.active-hdr {
+    background: var(--accent);
+    color: #fff;
+    border-radius: 999px;
+  }
+  .cell.current { background: var(--accent); font-size: 0; }  /* hides the product text */
+  .cell.current::after {
+    content: "?";
+    color: #fff;
+    font-size: clamp(8px, 2.3vw, 12px);
+    font-weight: 700;
+    animation: blink 1.1s steps(2, start) infinite;
+  }
+  @keyframes pop { 0% { transform: scale(.6); } 70% { transform: scale(1.12); } 100% { transform: scale(1); } }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .cell.current::after { animation: none; }
+    .cell.solved { animation: none; }
+    * { transition: none !important; }
+  }
+
+  /* ---------- end screen ---------- */
+  .end-card { text-align: center; }
+  .end-card:focus { outline: none; }
+  .end-card h2 { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+  .big-score {
+    font-size: clamp(56px, 16vw, 84px);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--accent);
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+  .end-card .muted { color: var(--muted); font-size: 14px; }
+  .end-card .btnrow { justify-content: center; margin-top: 22px; }
+
+  /* ---------- storage banner ---------- */
+  .banner {
+    position: fixed;
+    left: 12px; right: 12px; bottom: 12px;
+    max-width: 560px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding: 14px 18px;
+    font-size: 14px;
+    z-index: 10;
+  }
+  .banner p { flex: 1 1 240px; color: var(--muted); }
+  .banner button { padding: 8px 16px; }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <h1 data-i18n="title">Maaltafels</h1>
+      <div class="chips">
+        <span class="chip"><span data-i18n="score">Score</span> <b id="st-score">0</b></span>
+        <span class="chip" id="chip-time"><span data-i18n="time">Tijd</span> <b id="st-time">–</b></span>
+        <select id="lang" aria-label="Language">
+          <option value="nl">NL</option>
+          <option value="en">EN</option>
+          <option value="fr">FR</option>
+        </select>
+        <button class="iconbtn" id="btn-theme" aria-label="Thema">🌙</button>
+      </div>
+    </header>
+
+    <!-- ============ START / SETTINGS ============ -->
+    <div id="screen-start" class="card">
+      <div class="field">
+        <label for="cfg-name"><span data-i18n="nameLabel">Naam</span>
+          <span class="hint" data-i18n="nameHint">voor op het certificaat</span>
+        </label>
+        <input type="text" id="cfg-name" maxlength="40" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="field">
+        <label for="cfg-game"><span data-i18n="gameTime">Speeltijd</span>
+          <span class="hint" data-i18n="gameTimeHint">totale duur van een spel, in seconden</span>
+        </label>
+        <input type="number" id="cfg-game" value="60" min="10" max="600" step="5">
+      </div>
+      <div class="field">
+        <label for="cfg-question"><span data-i18n="qTime">Tijd per vraag</span>
+          <span class="hint" data-i18n="qTimeHint">seconden om te antwoorden</span>
+        </label>
+        <input type="number" id="cfg-question" value="8" min="2" max="60" step="1">
+      </div>
+      <div class="field">
+        <label for="cfg-max"><span data-i18n="maxTable">Tafels tot en met</span>
+          <span class="hint" data-i18n="maxTableHint">grootte van de grid</span>
+        </label>
+        <input type="number" id="cfg-max" value="12" min="2" max="12" step="1">
+      </div>
+      <div class="field">
+        <label for="cfg-keypad"><span data-i18n="keypadLabel">Toetsenblok op het scherm</span>
+          <span class="hint" data-i18n="keypadHint">handig op aanraakschermen</span>
+        </label>
+        <input type="checkbox" id="cfg-keypad">
+      </div>
+      <p class="intro" id="intro"></p>
+      <div class="btnrow">
+        <button class="primary" id="btn-start" data-i18n="start" autofocus>Start spel</button>
+        <button class="linklike hidden" id="btn-clear" data-i18n="clearData">Opgeslagen gegevens wissen</button>
+      </div>
+    </div>
+
+    <!-- ============ GAME ============ -->
+    <div id="screen-game" class="hidden">
+      <div class="card question-card">
+        <div class="question-line">
+          <span id="question">– × – =</span>
+          <input type="number" id="answer" inputmode="numeric" pattern="[0-9]*"
+                 enterkeyhint="go" autocomplete="off" aria-label="Jouw antwoord">
+          <button id="btn-ok" class="okbtn" type="button" aria-label="Controleer">✓</button>
+        </div>
+        <div class="qtimer-track" aria-hidden="true"><div id="qtimer"></div></div>
+      </div>
+      <div class="card keypad-card hidden" id="keypad">
+        <div class="keypad">
+          <button type="button" data-d="1">1</button>
+          <button type="button" data-d="2">2</button>
+          <button type="button" data-d="3">3</button>
+          <button type="button" data-d="4">4</button>
+          <button type="button" data-d="5">5</button>
+          <button type="button" data-d="6">6</button>
+          <button type="button" data-d="7">7</button>
+          <button type="button" data-d="8">8</button>
+          <button type="button" data-d="9">9</button>
+          <button type="button" id="kp-back">⌫</button>
+          <button type="button" data-d="0">0</button>
+          <button type="button" id="kp-ok" class="kp-ok">✓</button>
+        </div>
+      </div>
+      <div class="card grid-card">
+        <div class="grid" id="grid" aria-hidden="true"></div>
+      </div>
+    </div>
+
+    <!-- ============ END ============ -->
+    <div id="screen-end" class="hidden">
+      <div class="card end-card" id="end-card" tabindex="-1">
+        <h2 id="end-title">Tijd om!</h2>
+        <div class="big-score" id="end-score">0</div>
+        <div class="muted" id="end-detail"></div>
+        <div class="muted" id="end-best"></div>
+        <div class="btnrow">
+          <button class="primary" id="btn-again" data-i18n="again">Opnieuw spelen</button>
+          <button id="btn-cert" data-i18n="certBtn">Certificaat (PDF)</button>
+          <button id="btn-settings" data-i18n="settings">Instellingen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ STORAGE OPT-IN ============ -->
+  <div class="card banner hidden" id="banner" role="dialog" aria-live="polite">
+    <p data-i18n="bannerText"></p>
+    <div class="btnrow">
+      <button class="primary" id="banner-yes" data-i18n="bannerYes">Bewaren</button>
+      <button id="banner-no" data-i18n="bannerNo">Niet bewaren</button>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* ================= i18n ================= */
+
+  var STRINGS = {
+    nl: {
+      title: "Maaltafels",
+      score: "Score",
+      time: "Tijd",
+      nameLabel: "Naam",
+      nameHint: "voor op het certificaat",
+      gameTime: "Speeltijd",
+      gameTimeHint: "totale duur van een spel, in seconden",
+      qTime: "Tijd per vraag",
+      qTimeHint: "seconden om te antwoorden",
+      maxTable: "Tafels tot en met",
+      maxTableHint: "grootte van de grid",
+      intro: "Elke beurt kiest het spel een willekeurig vakje uit de grid. Typ het product en druk op <b>Enter</b>. Juist = 1 punt en het vakje is voorgoed opgelost. Fout of te traag = nieuw vakje.",
+      start: "Start spel",
+      timeUp: "Tijd om!",
+      allSolved: "Alle tafels opgelost! 🎉",
+      solvedDetail: "{n} van {total} vakjes opgelost",
+      bestScore: "Beste score met deze instellingen: {n}",
+      newBest: "Nieuw record! 🏆",
+      again: "Opnieuw spelen",
+      settings: "Instellingen",
+      answerLabel: "Jouw antwoord",
+      checkAnswer: "Controleer antwoord",
+      keypadLabel: "Toetsenblok op het scherm",
+      keypadHint: "handig op aanraakschermen",
+      backspaceLabel: "Cijfer wissen",
+      themeLabel: "Wissel thema",
+      bannerText: "Naam, instellingen, taal en hoogste scores op dit toestel bewaren voor later? Er wordt niets naar een server gestuurd.",
+      bannerYes: "Bewaren",
+      bannerNo: "Niet bewaren",
+      clearData: "Opgeslagen gegevens wissen",
+      certBtn: "Certificaat (PDF)",
+      certTitle: "CERTIFICAAT",
+      certAwarded: "uitgereikt aan",
+      certPoints: "punten",
+      certDetails: "Tafels tot en met {max}  \u00b7  Speeltijd {game} s  \u00b7  {q} s per vraag",
+      certDate: "Datum:",
+      certCode: "Verificatiecode:",
+      playerFallback: "Speler"
+    },
+    en: {
+      title: "Times Tables",
+      score: "Score",
+      time: "Time",
+      nameLabel: "Name",
+      nameHint: "shown on the certificate",
+      gameTime: "Game time",
+      gameTimeHint: "total length of one game, in seconds",
+      qTime: "Time per question",
+      qTimeHint: "seconds to answer",
+      maxTable: "Tables up to",
+      maxTableHint: "size of the grid",
+      intro: "Each turn the game picks a random cell from the grid. Type the product and press <b>Enter</b>. Correct = 1 point and the cell is solved for good. Wrong or too slow = a new cell.",
+      start: "Start game",
+      timeUp: "Time's up!",
+      allSolved: "All tables solved! 🎉",
+      solvedDetail: "{n} of {total} cells solved",
+      bestScore: "Best score with these settings: {n}",
+      newBest: "New record! 🏆",
+      again: "Play again",
+      settings: "Settings",
+      answerLabel: "Your answer",
+      checkAnswer: "Check answer",
+      keypadLabel: "On-screen keypad",
+      keypadHint: "handy on touch screens",
+      backspaceLabel: "Delete digit",
+      themeLabel: "Toggle theme",
+      bannerText: "Save name, settings, language and high scores on this device for next time? Nothing is sent to a server.",
+      bannerYes: "Save",
+      bannerNo: "Don't save",
+      clearData: "Clear saved data",
+      certBtn: "Certificate (PDF)",
+      certTitle: "CERTIFICATE",
+      certAwarded: "awarded to",
+      certPoints: "points",
+      certDetails: "Tables up to {max}  \u00b7  Game time {game} s  \u00b7  {q} s per question",
+      certDate: "Date:",
+      certCode: "Verification code:",
+      playerFallback: "Player"
+    },
+    fr: {
+      title: "Tables de multiplication",
+      score: "Score",
+      time: "Temps",
+      nameLabel: "Nom",
+      nameHint: "affich\u00e9 sur le certificat",
+      gameTime: "Temps de jeu",
+      gameTimeHint: "dur\u00e9e totale d'une partie, en secondes",
+      qTime: "Temps par question",
+      qTimeHint: "secondes pour r\u00e9pondre",
+      maxTable: "Tables jusqu'\u00e0",
+      maxTableHint: "taille de la grille",
+      intro: "\u00c0 chaque tour, le jeu choisit une case au hasard dans la grille. Tape le produit et appuie sur <b>Entr\u00e9e</b>. Correct = 1 point et la case est r\u00e9solue pour de bon. Faux ou trop lent = nouvelle case.",
+      start: "Commencer",
+      timeUp: "Temps \u00e9coul\u00e9 !",
+      allSolved: "Toutes les tables r\u00e9solues ! 🎉",
+      solvedDetail: "{n} cases r\u00e9solues sur {total}",
+      bestScore: "Meilleur score avec ces param\u00e8tres : {n}",
+      newBest: "Nouveau record ! 🏆",
+      again: "Rejouer",
+      settings: "Param\u00e8tres",
+      answerLabel: "Ta r\u00e9ponse",
+      checkAnswer: "V\u00e9rifier la r\u00e9ponse",
+      keypadLabel: "Clavier \u00e0 l'\u00e9cran",
+      keypadHint: "pratique sur \u00e9cran tactile",
+      backspaceLabel: "Effacer un chiffre",
+      themeLabel: "Changer de th\u00e8me",
+      bannerText: "Enregistrer le nom, les param\u00e8tres, la langue et les meilleurs scores sur cet appareil ? Rien n'est envoy\u00e9 \u00e0 un serveur.",
+      bannerYes: "Enregistrer",
+      bannerNo: "Ne pas enregistrer",
+      clearData: "Effacer les donn\u00e9es enregistr\u00e9es",
+      certBtn: "Certificat (PDF)",
+      certTitle: "CERTIFICAT",
+      certAwarded: "d\u00e9cern\u00e9 \u00e0",
+      certPoints: "points",
+      certDetails: "Tables jusqu'\u00e0 {max}  \u00b7  Temps de jeu {game} s  \u00b7  {q} s par question",
+      certDate: "Date :",
+      certCode: "Code de v\u00e9rification :",
+      playerFallback: "Joueur"
+    }
+  };
+
+  var LOCALES = { nl: "nl-BE", fr: "fr-BE", en: "en-GB" };
+
+  var lang = detectLang();
+
+  function detectLang() {
+    var l = (navigator.language || "nl").slice(0, 2).toLowerCase();
+    return STRINGS[l] ? l : "en";
+  }
+
+  function t(key, vars) {
+    var s = (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.en[key] || key;
+    if (vars) {
+      for (var k in vars) s = s.replace("{" + k + "}", vars[k]);
+    }
+    return s;
+  }
+
+  function applyLang() {
+    document.documentElement.lang = lang;
+    document.title = t("title");
+    var nodes = document.querySelectorAll("[data-i18n]");
+    for (var i = 0; i < nodes.length; i++) {
+      nodes[i].textContent = t(nodes[i].getAttribute("data-i18n"));
+    }
+    $("intro").innerHTML = t("intro");           // contains <b>Enter</b>
+    $("answer").setAttribute("aria-label", t("answerLabel"));
+    $("btn-ok").setAttribute("aria-label", t("checkAnswer"));
+    $("kp-ok").setAttribute("aria-label", t("checkAnswer"));
+    $("kp-back").setAttribute("aria-label", t("backspaceLabel"));
+    $("btn-theme").setAttribute("aria-label", t("themeLabel"));
+    $("lang").value = lang;
+    if (!screens.end.classList.contains("hidden")) renderEndTexts();
+  }
+
+  /* ================= persistence ================= */
+  // One localStorage key holding a single JSON blob. Purely client-side:
+  // unlike cookies, localStorage is never transmitted anywhere.
+
+  var store = {
+    KEY: "maaltafels",
+    available: (function () {
+      try {
+        var probe = "__mt_probe";
+        localStorage.setItem(probe, probe);
+        localStorage.removeItem(probe);
+        return true;
+      } catch (e) { return false; }
+    })(),
+    read: function () {
+      if (!this.available) return null;
+      try { return JSON.parse(localStorage.getItem(this.KEY)) || null; }
+      catch (e) { return null; }
+    },
+    write: function (obj) {
+      if (!this.available) return;
+      try { localStorage.setItem(this.KEY, JSON.stringify(obj)); } catch (e) {}
+    },
+    clear: function () {
+      if (!this.available) return;
+      try { localStorage.removeItem(this.KEY); } catch (e) {}
+    }
+  };
+
+  var consent = null;      // null (not asked) | "yes" | "no"
+  var bestScores = {};     // "max-gameSec-qSec" -> best score (in-memory; persisted only with consent)
+
+  function persist() {
+    if (!store.available) return;
+    if (consent === "no") { store.write({ consent: "no" }); return; }   // only the refusal flag
+    if (consent !== "yes") return;
+    store.write({
+      consent: "yes",
+      lang: lang,
+      theme: theme,
+      settings: {
+        name: $("cfg-name").value.slice(0, 40),
+        game: parseInt($("cfg-game").value, 10) || 60,
+        q: parseInt($("cfg-question").value, 10) || 8,
+        max: parseInt($("cfg-max").value, 10) || 12,
+        keypad: $("cfg-keypad").checked
+      },
+      best: bestScores
+    });
+  }
+
+  function loadStored() {
+    var saved = store.read();
+    if (!saved) return;
+    consent = saved.consent === "yes" ? "yes" : (saved.consent === "no" ? "no" : null);
+    if (consent !== "yes") return;
+    if (saved.lang && STRINGS[saved.lang]) lang = saved.lang;
+    if (saved.theme === "dark" || saved.theme === "light") theme = saved.theme;
+    if (saved.settings) {
+      if (typeof saved.settings.name === "string") $("cfg-name").value = saved.settings.name.slice(0, 40);
+      $("cfg-game").value = clamp(parseInt(saved.settings.game, 10) || 60, 10, 600);
+      $("cfg-question").value = clamp(parseInt(saved.settings.q, 10) || 8, 2, 60);
+      $("cfg-max").value = clamp(parseInt(saved.settings.max, 10) || 12, 2, 12);
+      if (typeof saved.settings.keypad === "boolean") $("cfg-keypad").checked = saved.settings.keypad;
+    }
+    if (saved.best && typeof saved.best === "object") bestScores = saved.best;
+  }
+
+  function updateBannerAndClear() {
+    $("banner").classList.toggle("hidden", !(store.available && consent === null));
+    $("btn-clear").classList.toggle("hidden", !(store.available && consent !== null));
+  }
+
+  /* ================= theme ================= */
+
+  var theme = (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches)
+    ? "dark" : "light";
+
+  function applyTheme() {
+    document.documentElement.setAttribute("data-theme", theme);
+    $("btn-theme").textContent = theme === "dark" ? "☀️" : "🌙";
+  }
+
+  /* ================= game state ================= */
+
+  var screens = {
+    start: $("screen-start"),
+    game: $("screen-game"),
+    end: $("screen-end")
+  };
+
+  var state = {
+    max: 12,
+    gameSec: 60,
+    qSec: 8,
+    solved: null,
+    solvedCount: 0,
+    score: 0,
+    presLog: [],          // [[r, c, solved(0/1)], ...] — every question shown, in order
+    seed: 0,              // PRNG seed for this game; cell order is replayable from it
+    rng: null,
+    current: null,
+    gameDeadline: 0,
+    questionDeadline: 0,
+    questionMs: 8000,
+    tickHandle: null,
+    running: false,
+    lastEndAllSolved: false,
+    lastEndNewBest: false
+  };
+
+  function cfgKey() { return state.max + "-" + state.gameSec + "-" + state.qSec; }
+
+  function show(name) {
+    for (var k in screens) screens[k].classList.toggle("hidden", k !== name);
+  }
+
+  /* ---------- grid ---------- */
+
+  function buildGrid() {
+    var g = $("grid");
+    g.innerHTML = "";
+    g.style.gridTemplateColumns = "repeat(" + (state.max + 1) + ", 1fr)";
+    g.appendChild(cellEl("", "hdr"));
+    for (var c = 1; c <= state.max; c++) g.appendChild(cellEl(c, "hdr", "hc-" + c));
+    for (var r = 1; r <= state.max; r++) {
+      g.appendChild(cellEl(r, "hdr", "hr-" + r));
+      for (var c2 = 1; c2 <= state.max; c2++) {
+        g.appendChild(cellEl(r * c2, "", "cell-" + r + "-" + c2));
+      }
+    }
+  }
+
+  function cellEl(text, extraClass, id) {
+    var d = document.createElement("div");
+    d.className = "cell" + (extraClass ? " " + extraClass : "");
+    if (id) d.id = id;
+    d.textContent = text;
+    return d;
+  }
+
+  function setCurrentCell(r, c, on) {
+    var el = $("cell-" + r + "-" + c);
+    if (el) el.classList.toggle("current", on);
+    var hr = $("hr-" + r), hc = $("hc-" + c);
+    if (hr) hr.classList.toggle("active-hdr", on);
+    if (hc) hc.classList.toggle("active-hdr", on);
+  }
+
+  // Solved cells get a hue that shifts diagonally across the grid
+  // (teal -> violet). Lightness lives in CSS so it adapts to the theme.
+  function markSolved(r, c) {
+    var el = $("cell-" + r + "-" + c);
+    if (!el) return;
+    var frac = (r + c - 2) / (2 * state.max - 2);   // 0..1 along the diagonal
+    el.style.setProperty("--h", Math.round(160 + frac * 120));
+    el.classList.remove("current");
+    el.classList.add("solved");
+  }
+
+  /* ---------- game flow ---------- */
+
+  function startGame() {
+    state.gameSec = clamp(parseInt($("cfg-game").value, 10) || 60, 10, 600);
+    state.qSec = clamp(parseInt($("cfg-question").value, 10) || 8, 2, 60);
+    state.max = clamp(parseInt($("cfg-max").value, 10) || 12, 2, 12);
+    state.questionMs = state.qSec * 1000;
+    persist();   // remember settings for next visit (if consented)
+
+    state.solved = [];
+    for (var r = 1; r <= state.max; r++) {
+      state.solved[r] = [];
+      for (var c = 1; c <= state.max; c++) state.solved[r][c] = false;
+    }
+    state.solvedCount = 0;
+    state.score = 0;
+    state.presLog = [];
+    state.seed = (Math.random() * 0x100000000) >>> 0;   // one-time seed; everything after is deterministic
+    state.rng = mulberry32(state.seed);
+    state.current = null;
+    state.running = true;
+    state.gameDeadline = Date.now() + state.gameSec * 1000;
+
+    buildGrid();
+    updateStatus();
+    show("game");
+
+    var kp = keypadOn();
+    $("keypad").classList.toggle("hidden", !kp);
+    $("btn-ok").classList.toggle("hidden", kp);
+    var input = $("answer");
+    input.readOnly = kp;                                   // readonly = no native keyboard
+    input.setAttribute("inputmode", kp ? "none" : "numeric");
+    input.value = "";
+
+    nextQuestion();
+    if (!kp) input.focus();
+
+    if (state.tickHandle) clearInterval(state.tickHandle);
+    state.tickHandle = setInterval(tick, 100);
+  }
+
+  function nextQuestion() {
+    if (state.current) setCurrentCell(state.current.r, state.current.c, false);
+
+    var total = state.max * state.max;
+    if (state.solvedCount >= total) { endGame(true); return; }
+
+    var remaining = total - state.solvedCount;
+    var pick = Math.floor(state.rng() * remaining);   // seeded: replayable draw
+    var r = 0, c = 0, i = 0;
+    outer:
+    for (r = 1; r <= state.max; r++) {
+      for (c = 1; c <= state.max; c++) {
+        if (!state.solved[r][c]) {
+          if (i === pick) break outer;
+          i++;
+        }
+      }
+    }
+
+    state.current = { r: r, c: c };
+    state.presLog.push([r, c, 0]);          // logged as unsolved until proven otherwise
+    setCurrentCell(r, c, true);
+    $("question").textContent = r + " × " + c + " =";
+    state.questionDeadline = Date.now() + state.questionMs;
+    $("answer").value = "";
+  }
+
+  function submitAnswer() {
+    if (!state.running || !state.current) return;
+    var raw = $("answer").value.trim();
+    if (raw === "") return;   // Enter on an empty field is inert: no penalty, no skip
+    var val = parseInt(raw, 10);
+    var cur = state.current;
+    var correct = (val === cur.r * cur.c);
+    if (correct) state.presLog[state.presLog.length - 1][2] = 1;
+
+    if (correct) {
+      state.solved[cur.r][cur.c] = true;
+      state.solvedCount++;
+      state.score++;
+      markSolved(cur.r, cur.c);
+      flash(true);
+    } else {
+      flash(false);
+    }
+    updateStatus();
+    nextQuestion();
+  }
+
+  function onQuestionTimeout() {
+    var raw = $("answer").value.trim();
+    if (raw !== "") {
+      submitAnswer();          // a number was entered: check it, like the original
+    } else {
+      flash(false);
+      nextQuestion();          // too slow: new cell
+    }
+  }
+
+  function tick() {
+    if (!state.running) return;
+    var now = Date.now();
+
+    if (now >= state.gameDeadline) { endGame(false); return; }
+    if (now >= state.questionDeadline) onQuestionTimeout();
+
+    var frac = Math.max(0, (state.questionDeadline - now) / state.questionMs);
+    $("qtimer").style.transform = "scaleX(" + frac + ")";
+
+    updateStatus();
+  }
+
+  function endGame(allSolved) {
+    state.running = false;
+    if (state.tickHandle) { clearInterval(state.tickHandle); state.tickHandle = null; }
+    if (state.current) setCurrentCell(state.current.r, state.current.c, false);
+
+    var key = cfgKey();
+    state.lastEndNewBest = state.score > 0 && state.score > (bestScores[key] || 0);
+    if (state.lastEndNewBest) {
+      bestScores[key] = state.score;
+      persist();
+    }
+    state.lastEndAllSolved = allSolved;
+
+    renderEndTexts();
+    $("st-time").textContent = "0";
+    show("end");
+    armEndScreen();
+  }
+
+  /* ---------- mash protection ----------
+     Players hammer Enter while answering. When the end screen appears we:
+     1. park focus on the (non-interactive) result card,
+     2. disable all buttons,
+     3. re-enable and focus "Play again" only after the screen has been
+        visible for 800 ms AND no Enter has been pressed for 700 ms.
+     So as long as someone keeps mashing, nothing can be triggered. */
+
+  var lastEnterAt = 0, armHandle = null;
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") lastEnterAt = Date.now();
+  }, true);
+
+  function setEndButtons(enabled) {
+    ["btn-again", "btn-cert", "btn-settings"].forEach(function (id) {
+      $(id).disabled = !enabled;
+    });
+  }
+
+  function armEndScreen() {
+    var shownAt = Date.now();
+    setEndButtons(false);
+    $("end-card").focus();
+    if (armHandle) clearInterval(armHandle);
+    armHandle = setInterval(function () {
+      var now = Date.now();
+      if (now - shownAt >= 800 && now - lastEnterAt >= 700) {
+        clearInterval(armHandle);
+        armHandle = null;
+        setEndButtons(true);
+        $("btn-again").focus();
+      }
+    }, 100);
+  }
+
+  function renderEndTexts() {
+    $("end-title").textContent = state.lastEndAllSolved ? t("allSolved") : t("timeUp");
+    $("end-score").textContent = state.score;
+    $("end-detail").textContent = t("solvedDetail", { n: state.solvedCount, total: state.max * state.max });
+    var best = bestScores[cfgKey()] || 0;
+    $("end-best").textContent = (state.lastEndNewBest ? t("newBest") + " " : "") + t("bestScore", { n: best });
+  }
+
+  /* ================= PDF certificate ================= */
+  // A tiny hand-rolled PDF writer: one A4 page, the 14 standard Type1 fonts
+  // (we use Helvetica variants, so no font embedding), simple vector shapes.
+  // Keeps the game a single dependency-free file that works offline.
+
+  var A4W = 595.28, A4H = 841.89;
+
+  // Text-width measurement via canvas; Helvetica/Arial metrics are close
+  // enough to the PDF standard fonts for centering purposes.
+  var measureCtx = document.createElement("canvas").getContext("2d");
+  function textWidth(text, size, style) {
+    measureCtx.font = (style || "normal") + " " + size + "px Helvetica, Arial, sans-serif";
+    return measureCtx.measureText(text).width;
+  }
+
+  // WinAnsi (≈ Latin-1) string escaping for PDF literal strings.
+  function pdfEsc(text) {
+    var out = "";
+    for (var i = 0; i < text.length; i++) {
+      var code = text.charCodeAt(i);
+      var ch = text.charAt(i);
+      if (ch === "\\" || ch === "(" || ch === ")") out += "\\" + ch;
+      else if (code >= 32 && code < 127) out += ch;
+      else if (code >= 160 && code <= 255) out += "\\" + ("00" + code.toString(8)).slice(-3);
+      else if (code === 0xB7) out += "\\267";      // middle dot
+      else out += "?";                             // outside Latin-1
+    }
+    return out;
+  }
+
+  var PDF_FONT_STYLE = { 1: "normal", 2: "bold", 3: "italic" };  // F1/F2/F3
+
+  function pdfColor(hex) {
+    var n = parseInt(hex.slice(1), 16);
+    return (((n >> 16) & 255) / 255).toFixed(3) + " " +
+           (((n >> 8) & 255) / 255).toFixed(3) + " " +
+           ((n & 255) / 255).toFixed(3);
+  }
+
+  function CertPainter() {
+    this.ops = [];
+  }
+  CertPainter.prototype.text = function (str, x, y, size, font, colorHex) {
+    this.ops.push(pdfColor(colorHex) + " rg BT /F" + font + " " + size +
+      " Tf " + x.toFixed(2) + " " + y.toFixed(2) + " Td (" + pdfEsc(str) + ") Tj ET");
+  };
+  CertPainter.prototype.textCentered = function (str, y, size, font, colorHex) {
+    var w = textWidth(str, size, PDF_FONT_STYLE[font]);
+    this.text(str, (A4W - w) / 2, y, size, font, colorHex);
+    return w;
+  };
+  CertPainter.prototype.rectStroke = function (x, y, w, h, lineW, colorHex) {
+    this.ops.push(pdfColor(colorHex) + " RG " + lineW + " w " +
+      x + " " + y + " " + w + " " + h + " re S");
+  };
+  CertPainter.prototype.line = function (x1, y1, x2, y2, lineW, colorHex) {
+    this.ops.push(pdfColor(colorHex) + " RG " + lineW + " w " +
+      x1.toFixed(2) + " " + y1.toFixed(2) + " m " + x2.toFixed(2) + " " + y2.toFixed(2) + " l S");
+  };
+  CertPainter.prototype.circleFill = function (cx, cy, r, colorHex) {
+    var k = 0.5523 * r;
+    this.ops.push(pdfColor(colorHex) + " rg " +
+      (cx - r).toFixed(2) + " " + cy.toFixed(2) + " m " +
+      (cx - r).toFixed(2) + " " + (cy + k).toFixed(2) + " " + (cx - k).toFixed(2) + " " + (cy + r).toFixed(2) + " " + cx.toFixed(2) + " " + (cy + r).toFixed(2) + " c " +
+      (cx + k).toFixed(2) + " " + (cy + r).toFixed(2) + " " + (cx + r).toFixed(2) + " " + (cy + k).toFixed(2) + " " + (cx + r).toFixed(2) + " " + cy.toFixed(2) + " c " +
+      (cx + r).toFixed(2) + " " + (cy - k).toFixed(2) + " " + (cx + k).toFixed(2) + " " + (cy - r).toFixed(2) + " " + cx.toFixed(2) + " " + (cy - r).toFixed(2) + " c " +
+      (cx - k).toFixed(2) + " " + (cy - r).toFixed(2) + " " + (cx - r).toFixed(2) + " " + (cy - k).toFixed(2) + " " + (cx - r).toFixed(2) + " " + cy.toFixed(2) + " c f");
+  };
+  CertPainter.prototype.starFill = function (cx, cy, rOut, rIn, colorHex) {
+    var pts = [];
+    for (var i = 0; i < 10; i++) {
+      var ang = -Math.PI / 2 + i * Math.PI / 5;
+      var r = (i % 2 === 0) ? rOut : rIn;
+      pts.push((cx + r * Math.cos(ang)).toFixed(2) + " " + (cy + r * Math.sin(ang)).toFixed(2));
+    }
+    this.ops.push(pdfColor(colorHex) + " rg " + pts[0] + " m " +
+      pts.slice(1).map(function (p) { return p + " l"; }).join(" ") + " h f");
+  };
+  CertPainter.prototype.stream = function () { return this.ops.join("\n"); };
+  // Courier is fixed-width at exactly 0.6em/char (standard PDF metric), so
+  // we can wrap by character count with no measurement needed. Draws
+  // top-down starting at yTop and returns the y just below the last line.
+  CertPainter.prototype.courierBlock = function (text, xLeft, yTop, size, colorHex, maxWidthPt, lineGap) {
+    var charW = size * 0.6;
+    var perLine = Math.max(10, Math.floor(maxWidthPt / charW));
+    var y = yTop;
+    for (var i = 0; i < text.length; i += perLine) {
+      this.text(text.slice(i, i + perLine), xLeft, y, size, 4, colorHex);
+      y -= lineGap;
+    }
+    return y;
+  };
+
+  function buildPdf(contentStream) {
+    var objs = [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + A4W + " " + A4H + "] " +
+        "/Resources << /Font << /F1 4 0 R /F2 5 0 R /F3 6 0 R /F4 7 0 R >> >> /Contents 8 0 R >>",
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>",
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>",
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>",
+      "<< /Length " + contentStream.length + " >>\nstream\n" + contentStream + "\nendstream"
+    ];
+    var out = "%PDF-1.4\n";
+    var offsets = [];
+    for (var i = 0; i < objs.length; i++) {
+      offsets.push(out.length);
+      out += (i + 1) + " 0 obj\n" + objs[i] + "\nendobj\n";
+    }
+    var xref = out.length;
+    out += "xref\n0 " + (objs.length + 1) + "\n0000000000 65535 f \n";
+    for (var j = 0; j < offsets.length; j++) {
+      out += ("0000000000" + offsets[j]).slice(-10) + " 00000 n \n";
+    }
+    out += "trailer\n<< /Size " + (objs.length + 1) + " /Root 1 0 R >>\nstartxref\n" + xref + "\n%%EOF";
+    // convert to bytes (everything is ASCII after escaping)
+    var bytes = new Uint8Array(out.length);
+    for (var b = 0; b < out.length; b++) bytes[b] = out.charCodeAt(b) & 0xFF;
+    return bytes;
+  }
+
+  var INK = "#1c2333", GRAY = "#6b7385", ACCENT = "#4353e8",
+      GOLD = "#e8b13a", GOLD_DARK = "#c28e1f";
+
+  // A fast, non-cryptographic string hash (cyrb53). This is NOT meant to
+  // resist a determined person reading the source — nothing that runs in
+  // the player's own browser can be truly tamper-proof, since this
+  // function is right there in the page for anyone to read and re-run.
+  // What it buys us: the certificate prints its own proof data (name,
+  // settings, score, and the exact solved cells) as plain text, and the
+  // code is a hash of exactly that text. Editing the big score number
+  // alone does nothing to the printed data, so it's instantly caught by
+  // re-hashing. Producing a *consistent* fake — matching data, cell count,
+  // and hash — requires understanding the format and running this same
+  // function, which is the bar we're aiming for.
+  function cyrb53(str) {
+    var h1 = 0xdeadbeef, h2 = 0x41c6ce57, ch;
+    for (var i = 0; i < str.length; i++) {
+      ch = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+  }
+
+  function codeFromText(str) {
+    var hex = cyrb53(str).toString(16).toUpperCase();
+    while (hex.length < 12) hex = "0" + hex;
+    return hex.slice(-12).match(/.{1,4}/g).join("-");
+  }
+
+  // Seeded PRNG (mulberry32). Cell selection draws from this, so the full
+  // question order of a game is a pure function of (seed, answer outcomes)
+  // and can be replayed deterministically from the proof line alone.
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      var t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  // The plain-text proof line printed on the certificate:
+  //   name|tablesMax|gameSeconds|questionSeconds|seedHex|score|sequence
+  // The sequence lists EVERY question shown, in the order it was shown:
+  // "r.c+" (solved) or "r.c-" (wrong / timed out). Each shown question
+  // consumed exactly one PRNG draw, so the whole sequence must replay
+  // cleanly from the seed — an out-of-order or invented sequence won't.
+  // Spaces in the name become underscores so the line survives PDF
+  // copy/paste and line wrapping (whitespace can then be safely stripped).
+  function serializeProof(name, score) {
+    var safe = name.replace(/[|\s]+/g, "_");
+    var seedHex = ("00000000" + state.seed.toString(16).toUpperCase()).slice(-8);
+    var seq = state.presLog.map(function (e) {
+      return e[0] + "." + e[1] + (e[2] === 1 ? "+" : "-");
+    }).join(",");
+    return [safe, state.max, state.gameSec, state.qSec, seedHex, score, seq].join("|");
+  }
+
+  function downloadCertificate() {
+    var name = ($("cfg-name").value || "").trim().slice(0, 40) || t("playerFallback");
+    // Score is recomputed from the presentation log itself, not read from a
+    // separately-tracked counter that would be easier to overwrite.
+    var score = 0;
+    state.presLog.forEach(function (e) { if (e[2] === 1) score++; });
+    var proof = serializeProof(name, score);
+    var code = codeFromText(proof);
+
+    var p = new CertPainter();
+
+    // double border
+    p.rectStroke(26, 26, A4W - 52, A4H - 52, 3, ACCENT);
+    p.rectStroke(36, 36, A4W - 72, A4H - 72, 1, GOLD);
+
+    // gold rosette with star, flanked by two small stars
+    var cx = A4W / 2, ry = 706;
+    p.circleFill(cx, ry, 34, GOLD);
+    p.circleFill(cx, ry, 28, GOLD_DARK);
+    p.starFill(cx, ry - 4, 20, 8, "#ffffff");
+    p.starFill(cx - 78, ry, 10, 4, GOLD);
+    p.starFill(cx + 78, ry, 10, 4, GOLD);
+
+    // title + game name
+    p.textCentered(t("certTitle"), 618, 38, 2, INK);
+    p.textCentered("\u00b7  " + t("title") + "  \u00b7", 590, 15, 3, ACCENT);
+
+    // awarded to + name with underline
+    p.textCentered(t("certAwarded"), 526, 13, 1, GRAY);
+    var nameW = p.textCentered(name, 482, 32, 2, INK);
+    var half = Math.max(nameW, 140) / 2 + 20;
+    p.line(cx - half, 470, cx + half, 470, 0.8, GOLD);
+
+    // score
+    var scoreStr = String(score);
+    p.textCentered(scoreStr, 366, 84, 2, ACCENT);
+    p.textCentered(t("certPoints"), 340, 15, 1, GRAY);
+
+    // settings line (so certificates are only comparable for equal settings)
+    p.textCentered(t("certDetails", { max: state.max, game: state.gameSec, q: state.qSec }), 282, 13, 1, GRAY);
+    p.textCentered(t("solvedDetail", { n: state.solvedCount, total: state.max * state.max }), 260, 13, 1, GRAY);
+
+    // date, verification code, and the proof text it was derived from
+    var dateStr = new Date().toLocaleDateString(LOCALES[lang] || "en-GB",
+      { day: "numeric", month: "long", year: "numeric" });
+    p.textCentered(t("certDate") + " " + dateStr, 150, 12, 1, GRAY);
+    p.textCentered(t("certCode") + " " + code, 128, 11, 2, INK);
+    // proof block: shrink the font until the wrapped sequence fits above
+    // the inner border (long games produce long sequences)
+    var psize = 5.5, pgap;
+    for (;;) {
+      pgap = psize * 1.3;
+      var perLine = Math.floor((A4W - 92) / (psize * 0.6));
+      if (110 - Math.ceil(proof.length / perLine) * pgap >= 40 || psize <= 3.5) break;
+      psize -= 0.5;
+    }
+    p.courierBlock(proof, 46, 110, psize, GRAY, A4W - 92, pgap);
+
+    var bytes = buildPdf(p.stream());
+    var blob = new Blob([bytes], { type: "application/pdf" });
+    var safeName = name.replace(/[^\w\-]+/g, "_").replace(/^_+|_+$/g, "") || "certificaat";
+    var filename = "maaltafels-" + safeName + ".pdf";
+
+    // iOS WebKit (Safari, Firefox, Chrome are all WebKit there) frequently
+    // ignores/mishandles the `download` attribute for blob: PDF URLs, so an
+    // <a download> click can silently do nothing. Prefer the native share
+    // sheet when available (lets the player save to Files or print
+    // directly); otherwise open the PDF in a new tab, where the built-in
+    // viewer's own share/save button works reliably.
+    var file = (typeof File === "function") ? new File([blob], filename, { type: "application/pdf" }) : null;
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: filename }).catch(function () {});
+      return;
+    }
+
+    var url = URL.createObjectURL(blob);
+    var isIOS = /iP(hone|od|ad)/.test(navigator.platform) ||
+      (navigator.userAgent.indexOf("Mac") !== -1 && navigator.maxTouchPoints > 1);
+    if (isIOS) {
+      window.open(url, "_blank");
+    } else {
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+    setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
+  }
+
+  /* ---------- helpers ---------- */
+
+  function updateStatus() {
+    $("st-score").textContent = state.score;
+    if (state.running) {
+      var secs = Math.max(0, Math.ceil((state.gameDeadline - Date.now()) / 1000));
+      $("st-time").textContent = secs;
+      $("chip-time").classList.toggle("time-low", secs <= 10);
+    }
+  }
+
+  var flashTimer = null;
+  function flash(good) {
+    var panel = document.querySelector(".question-card");
+    panel.classList.remove("flash-good", "flash-bad");
+    void panel.offsetWidth;   // restart even for consecutive same-type flashes
+    panel.classList.add(good ? "flash-good" : "flash-bad");
+    if (flashTimer) clearTimeout(flashTimer);
+    flashTimer = setTimeout(function () {
+      panel.classList.remove("flash-good", "flash-bad");
+    }, 250);
+  }
+
+  function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+  /* ---------- events ---------- */
+
+  $("btn-start").addEventListener("click", startGame);
+  $("btn-again").addEventListener("click", startGame);
+  $("btn-settings").addEventListener("click", function () {
+    show("start");
+    $("btn-start").focus();
+  });
+  $("btn-cert").addEventListener("click", downloadCertificate);
+
+  $("btn-theme").addEventListener("click", function () {
+    theme = theme === "dark" ? "light" : "dark";
+    applyTheme();
+    persist();
+  });
+
+  $("lang").addEventListener("change", function () {
+    lang = this.value;
+    applyLang();
+    persist();
+  });
+
+  $("banner-yes").addEventListener("click", function () {
+    consent = "yes";
+    persist();
+    updateBannerAndClear();
+  });
+  $("banner-no").addEventListener("click", function () {
+    consent = "no";
+    persist();               // stores only { consent: "no" } so we don't ask again
+    updateBannerAndClear();
+  });
+  $("btn-clear").addEventListener("click", function () {
+    store.clear();
+    consent = null;
+    bestScores = {};
+    updateBannerAndClear();  // banner reappears so the choice can be made again
+  });
+
+  /* ---------- on-screen keypad ---------- */
+
+  function keypadOn() { return $("cfg-keypad").checked; }
+
+  function padDigit(d) {
+    var input = $("answer");
+    if (input.value.length >= 3) return;   // max product is 144
+    input.value += d;
+  }
+  function padBack() {
+    var input = $("answer");
+    input.value = input.value.slice(0, -1);
+  }
+
+  $("keypad").addEventListener("pointerdown", function (e) {
+    e.preventDefault();                    // never move focus or open a native keyboard
+    var btn = e.target.closest("button");
+    if (btn && btn.id === "kp-ok") lastEnterAt = Date.now();   // mash protection
+  });
+  $("keypad").addEventListener("click", function (e) {
+    if (!state.running) return;
+    var btn = e.target.closest("button");
+    if (!btn) return;
+    if (btn.dataset.d !== undefined) padDigit(btn.dataset.d);
+    else if (btn.id === "kp-back") padBack();
+    else if (btn.id === "kp-ok") submitAnswer();
+  });
+
+  // physical keyboards keep working in keypad mode, regardless of focus
+  document.addEventListener("keydown", function (e) {
+    if (!state.running || !keypadOn()) return;
+    if (e.key >= "0" && e.key <= "9") { e.preventDefault(); padDigit(e.key); }
+    else if (e.key === "Backspace") { e.preventDefault(); padBack(); }
+    else if (e.key === "Enter") { e.preventDefault(); submitAnswer(); }
+  });
+
+  $("answer").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); submitAnswer(); }
+  });
+
+  // On-screen ✓ button: the reliable submit on mobile. preventDefault on
+  // pointerdown stops it from stealing focus, so the on-screen keyboard
+  // never closes between questions.
+  $("btn-ok").addEventListener("pointerdown", function (e) {
+    e.preventDefault();
+    lastEnterAt = Date.now();          // taps count toward mash protection too
+  });
+  $("btn-ok").addEventListener("click", function () {
+    if (!state.running) return;
+    submitAnswer();
+    $("answer").focus();
+  });
+
+  // iOS numeric pad's Done/check key doesn't fire Enter — it just blurs the
+  // field. Treat "blurred with a value while playing" as the submit the
+  // player intended (unless focus went to the header controls).
+  $("answer").addEventListener("blur", function (e) {
+    if (!state.running || this.value.trim() === "") return;
+    if (e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest(".chips")) return;
+    submitAnswer();
+  });
+
+  document.addEventListener("click", function (e) {
+    // keep the answer box focused during play, but not in keypad mode and not
+    // when using header controls or the banner
+    if (state.running && !keypadOn() && !e.target.closest(".chips") && !e.target.closest(".banner")) {
+      $("answer").focus();
+    }
+  });
+
+  screens.start.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && e.target.tagName !== "SELECT" && e.target.tagName !== "BUTTON"
+        && e.target.id !== "cfg-name") {
+      e.preventDefault();
+      startGame();
+    } else if (e.key === "Enter" && e.target.id === "cfg-name") {
+      e.preventDefault();
+      startGame();
+    }
+  });
+
+  /* ---------- init ---------- */
+  $("cfg-keypad").checked = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+  loadStored();
+  applyTheme();
+  applyLang();
+  updateBannerAndClear();
+})();
+</script>
+</body>
+</html>
