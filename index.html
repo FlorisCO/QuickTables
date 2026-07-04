@@ -54,7 +54,7 @@
     transition: background-color .2s, color .2s;
   }
 
-  .app { width: 100%; max-width: 780px; }
+  .app { width: 100%; max-width: 960px; }
 
   header.top {
     display: flex;
@@ -120,11 +120,12 @@
   /* ---------- setup preview (desktop/tablet only) ---------- */
   .setup-row { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
   .setup-row #screen-start { flex: 1 1 320px; min-width: 280px; }
-  .preview-card { flex: 1 1 320px; min-width: 280px; }
-  .preview-grid { gap: 2px; }
+  .preview-card { flex: 1 1 320px; min-width: 280px; padding: 14px; }
+  .preview-grid { gap: 1px; }
   .preview-grid .cell {
     color: var(--ink);                 /* unlike the play grid, answers are always visible here */
-    font-size: clamp(7px, 1.6vw, 11px);
+    font-size: clamp(6px, 1.2vw, 10px);
+    border-radius: 3px;
   }
   .preview-grid .cell.hdr { color: var(--muted); }
   /* Phones only (tablets keep the preview): hide it entirely and let
@@ -197,7 +198,7 @@
     padding: 8px 14px;
     font-weight: 700;
   }
-  .numbtn { min-width: 42px; padding: 8px 0; text-align: center; font-variant-numeric: tabular-nums; }
+  .numbtn { min-width: 0; padding: 8px 0; text-align: center; font-variant-numeric: tabular-nums; }
   .segbtn.on, .numbtn.on {
     background: var(--accent);
     color: var(--accent-ink);
@@ -205,7 +206,7 @@
   }
   .modepanel { padding: 2px 0 12px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
   .panel-label { font-weight: 600; font-size: 14px; margin: 10px 0 6px; }
-  .numpick { display: flex; flex-wrap: wrap; gap: 6px; }
+  .numpick { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; }
   .hint.warn { color: var(--wrong); font-weight: 700; }
 
   /* ---------- question ---------- */
@@ -464,7 +465,7 @@
         <label for="cfg-max"><span data-i18n="maxTable">Tafels tot en met</span>
           <span class="hint" data-i18n="maxTableHint">grootte van de grid</span>
         </label>
-        <input type="number" id="cfg-max" value="12" min="2" max="12" step="1">
+        <input type="number" id="cfg-max" value="12" min="2" max="20" step="1">
       </div>
       <div class="field">
         <label for="cfg-keypad"><span data-i18n="keypadLabel">Toetsenblok op het scherm</span>
@@ -869,11 +870,11 @@
       if (typeof saved.settings.name === "string") $("cfg-name").value = saved.settings.name.slice(0, 40);
       $("cfg-game").value = clamp(parseInt(saved.settings.game, 10) || 60, 10, 600);
       $("cfg-question").value = clamp(parseInt(saved.settings.q, 10) || 8, 2, 60);
-      $("cfg-max").value = clamp(parseInt(saved.settings.max, 10) || 12, 2, 12);
+      $("cfg-max").value = clamp(parseInt(saved.settings.max, 10) || 12, 2, 20);
       if (typeof saved.settings.keypad === "boolean") $("cfg-keypad").checked = saved.settings.keypad;
       if (saved.settings.mode === "G" || saved.settings.mode === "P" || saved.settings.mode === "T") ui.mode = saved.settings.mode;
       var pn = parseInt(saved.settings.pn, 10);
-      if (pn >= 1 && pn <= 12) ui.teachNum = pn;
+      if (pn >= 1 && pn <= 20) ui.teachNum = pn;
       if (saved.settings.psc === "B" || saved.settings.psc === "R" || saved.settings.psc === "C") ui.teachScope = saved.settings.psc;
       if (typeof saved.settings.tr === "string") { var trf = hexToFlags(saved.settings.tr); if (Object.keys(trf).length) ui.sRows = trf; }
       if (typeof saved.settings.tc === "string") { var tcf = hexToFlags(saved.settings.tc); if (Object.keys(tcf).length) ui.sCols = tcf; }
@@ -899,7 +900,7 @@
   /* ================= game state ================= */
 
   var screens = {
-    start: $("screen-start"),
+    start: $("setup-row"),      // wrapper: preview card + settings card together
     game: $("screen-game"),
     end: $("screen-end")
   };
@@ -934,7 +935,7 @@
     lastEndNewBest: false
   };
 
-  var HEXD = "123456789ABC";   // 1..12 as single characters for compact encoding
+  var HEXD = "123456789ABCDEFGHIJK";   // 1..20 as single characters (A=10 ... K=20)
 
   function selStr(flags) {
     var s = "";
@@ -957,12 +958,12 @@
 
   // Question weights (Game mode only): the easiest factor of a cell
   // dominates. Any factor of 1, 10 or 11 → weight 2 (1/3 of normal);
-  // factor of 2 → weight 3 (1/2); exception: 11×11 and 11×12 (and mirror)
-  // are the tricky elevens → weight 3. Everything else weight 6.
+  // factor of 2 → weight 3 (1/2); exception: 11×Y where Y > 10 (and mirror)
+  // are the tricky elevens → weight 5. Everything else weight 6.
   // Practice and Teacher mode always draw uniformly.
   function cellWeight(r, c) {
     if (state.mode !== "G") return 1;
-    if (Math.min(r, c) === 11) return 3;
+    if (Math.min(r, c) === 11 && Math.max(r, c) >= 11) return 5;
     if (r === 1 || c === 1 || r === 10 || c === 10 || r === 11 || c === 11) return 2;
     if (r === 2 || c === 2) return 3;
     return 6;
@@ -977,8 +978,8 @@
     sRows: fullFlags(),          // Practice-mode subset flags
     sCols: fullFlags()
   };
-  function fullFlags() { var a = {}; for (var i = 1; i <= 12; i++) a[i] = true; return a; }
-  function flagsToHex(f) { var s = ""; for (var i = 1; i <= 12; i++) if (f[i]) s += HEXD[i - 1]; return s; }
+  function fullFlags() { var a = {}; for (var i = 1; i <= 20; i++) a[i] = true; return a; }
+  function flagsToHex(f) { var s = ""; for (var i = 1; i <= 20; i++) if (f[i]) s += HEXD[i - 1]; return s; }
   function hexToFlags(s) {
     var f = {};
     s = String(s || "").toUpperCase();
@@ -992,7 +993,7 @@
   function buildNumButtons(containerId, handler) {
     var box = $(containerId);
     box.innerHTML = "";
-    for (var i = 1; i <= 12; i++) {
+    for (var i = 1; i <= 20; i++) {
       var b = document.createElement("button");
       b.type = "button";
       b.className = "numbtn";
@@ -1031,7 +1032,7 @@
 
   function renderPreviewGrid() {
     $("preview-label").textContent = t("previewLabel");
-    var maxV = clamp(parseInt($("cfg-max").value, 10) || 12, 2, 12);
+    var maxV = clamp(parseInt($("cfg-max").value, 10) || 12, 2, 20);
     var sel = computeUiSelection(maxV);
     var g = $("preview-grid");
     g.innerHTML = "";
@@ -1049,6 +1050,14 @@
   function refreshModeUI() {
     var segs = $("mode-seg").querySelectorAll(".segbtn");
     for (var i = 0; i < segs.length; i++) segs[i].classList.toggle("on", segs[i].dataset.mode === ui.mode);
+    // number pickers only offer tables within the current grid size
+    var maxV = clamp(parseInt($("cfg-max").value, 10) || 12, 2, 20);
+    ["teach-nums", "subset-rows", "subset-cols"].forEach(function (id) {
+      var kids = $(id).children;
+      for (var b = 0; b < kids.length; b++) {
+        kids[b].classList.toggle("hidden", +kids[b].dataset.v > maxV);
+      }
+    });
     $("panel-teach").classList.toggle("hidden", ui.mode !== "T");
     $("panel-subset").classList.toggle("hidden", ui.mode !== "P");
     $("cfg-game").closest(".field").classList.toggle("hidden", ui.mode === "T");   // no game time in Teacher mode
@@ -1070,7 +1079,7 @@
   // Live count of active cells for the teacher setup (AND semantics),
   // within the current grid size.
   function subsetCellCount() {
-    var maxV = clamp(parseInt($("cfg-max").value, 10) || 12, 2, 12);
+    var maxV = clamp(parseInt($("cfg-max").value, 10) || 12, 2, 20);
     var n = 0;
     for (var r = 1; r <= maxV; r++) {
       for (var c = 1; c <= maxV; c++) {
@@ -1145,7 +1154,7 @@
   function startGame() {
     state.gameSec = clamp(parseInt($("cfg-game").value, 10) || 60, 10, 600);
     state.qSec = clamp(parseInt($("cfg-question").value, 10) || 8, 2, 60);
-    state.max = clamp(parseInt($("cfg-max").value, 10) || 12, 2, 12);
+    state.max = clamp(parseInt($("cfg-max").value, 10) || 12, 2, 20);
     state.questionMs = state.qSec * 1000;
 
     // active-cell selection for this game, from the chosen mode
@@ -1802,10 +1811,10 @@
     persist();
   }
   function setAll(flags, on) {
-    for (var i = 1; i <= 12; i++) { if (on) flags[i] = true; else delete flags[i]; }
+    for (var i = 1; i <= 20; i++) { if (on) flags[i] = true; else delete flags[i]; }
   }
   function allOn(flags) {
-    for (var i = 1; i <= 12; i++) if (!flags[i]) return false;
+    for (var i = 1; i <= 20; i++) if (!flags[i]) return false;
     return true;
   }
   $("rows-all").addEventListener("click", function () { setAll(ui.sRows, !allOn(ui.sRows)); refreshModeUI(); persist(); });
