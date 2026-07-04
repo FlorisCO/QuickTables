@@ -54,7 +54,7 @@
     transition: background-color .2s, color .2s;
   }
 
-  .app { width: 100%; max-width: 560px; }
+  .app { width: 100%; max-width: 780px; }
 
   header.top {
     display: flex;
@@ -115,6 +115,22 @@
     border-radius: var(--radius);
     box-shadow: var(--shadow);
     padding: clamp(16px, 4vw, 28px);
+  }
+
+  /* ---------- setup preview (desktop/tablet only) ---------- */
+  .setup-row { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+  .setup-row #screen-start { flex: 1 1 320px; min-width: 280px; }
+  .preview-card { flex: 1 1 320px; min-width: 280px; }
+  .preview-grid { gap: 2px; }
+  .preview-grid .cell {
+    color: var(--ink);                 /* unlike the play grid, answers are always visible here */
+    font-size: clamp(7px, 1.6vw, 11px);
+  }
+  .preview-grid .cell.hdr { color: var(--muted); }
+  /* Phones only (tablets keep the preview): hide it entirely and let
+     settings take the full width. */
+  @media (pointer: coarse) and (max-width: 599px), (pointer: coarse) and (max-height: 499px) {
+    .preview-card { display: none; }
   }
 
   /* ---------- forms / buttons ---------- */
@@ -392,7 +408,12 @@
     </header>
 
     <!-- ============ START / SETTINGS ============ -->
-    <div id="screen-start" class="card">
+    <div class="setup-row" id="setup-row">
+      <div class="card preview-card" id="setup-preview">
+        <p class="panel-label" id="preview-label" style="margin-top:0"></p>
+        <div class="grid preview-grid" id="preview-grid" aria-hidden="true"></div>
+      </div>
+      <div id="screen-start" class="card">
       <div class="seg" id="mode-seg">
         <button type="button" class="segbtn on" data-mode="G" data-i18n="modeGame">Spel</button>
         <button type="button" class="segbtn" data-mode="P" data-i18n="modePractice">Oefenen</button>
@@ -455,6 +476,7 @@
       <div class="btnrow">
         <button class="primary" id="btn-start" data-i18n="start" autofocus>Start spel</button>
         <button class="linklike hidden" id="btn-clear" data-i18n="clearData">Opgeslagen gegevens wissen</button>
+      </div>
       </div>
     </div>
 
@@ -555,6 +577,7 @@
       modePractice: "Oefenen",
       modeTeacher: "Leerkracht",
       teachPick: "Welke tafel wil je leren?",
+      previewLabel: "Voorbeeld",
       teachDoneTitle: "Helemaal rond!",
       teachPerfectTitle: "Alles juist! 🎉",
       teachElapsed: "Klaar in {t} seconden",
@@ -626,6 +649,7 @@
       modePractice: "Practice",
       modeTeacher: "Teacher",
       teachPick: "Which table do you want to learn?",
+      previewLabel: "Preview",
       teachDoneTitle: "All done!",
       teachPerfectTitle: "All correct! 🎉",
       teachElapsed: "Done in {t} seconds",
@@ -697,6 +721,7 @@
       modePractice: "Entra\u00eenement",
       modeTeacher: "Enseignant",
       teachPick: "Quelle table veux-tu apprendre ?",
+      previewLabel: "Aper\u00e7u",
       teachDoneTitle: "Termin\u00e9 !",
       teachPerfectTitle: "Tout juste ! 🎉",
       teachElapsed: "Fini en {t} secondes",
@@ -978,6 +1003,49 @@
     }
   }
 
+  // Builds the always-visible answer grid shown next to settings on
+  // desktop/tablet, reflecting whichever mode/selection is currently
+  // configured (before the game actually starts). Mirrors the same
+  // selection logic startGame() uses, but reads from `ui` since `state`
+  // hasn't been set up yet.
+  function computeUiSelection(maxV) {
+    var rows = {}, cols = {};
+    if (ui.mode === "G") {
+      for (var i = 1; i <= maxV; i++) { rows[i] = true; cols[i] = true; }
+    } else if (ui.mode === "T") {
+      var v = Math.min(ui.teachNum, maxV);
+      if (ui.teachScope !== "C") rows[v] = true;
+      if (ui.teachScope !== "R") cols[v] = true;
+    } else {
+      for (var j = 1; j <= maxV; j++) {
+        if (ui.sRows[j]) rows[j] = true;
+        if (ui.sCols[j]) cols[j] = true;
+      }
+    }
+    return { rows: rows, cols: cols };
+  }
+  function uiInSelection(sel, r, c) {
+    if (ui.mode === "P") return sel.rows[r] === true && sel.cols[c] === true;
+    return sel.rows[r] === true || sel.cols[c] === true;
+  }
+
+  function renderPreviewGrid() {
+    $("preview-label").textContent = t("previewLabel");
+    var maxV = clamp(parseInt($("cfg-max").value, 10) || 12, 2, 12);
+    var sel = computeUiSelection(maxV);
+    var g = $("preview-grid");
+    g.innerHTML = "";
+    g.style.gridTemplateColumns = "repeat(" + (maxV + 1) + ", 1fr)";
+    g.appendChild(cellEl("", "hdr"));
+    for (var c = 1; c <= maxV; c++) g.appendChild(cellEl(c, "hdr"));
+    for (var r = 1; r <= maxV; r++) {
+      g.appendChild(cellEl(r, "hdr"));
+      for (var c2 = 1; c2 <= maxV; c2++) {
+        g.appendChild(cellEl(r * c2, uiInSelection(sel, r, c2) ? "" : "inactive"));
+      }
+    }
+  }
+
   function refreshModeUI() {
     var segs = $("mode-seg").querySelectorAll(".segbtn");
     for (var i = 0; i < segs.length; i++) segs[i].classList.toggle("on", segs[i].dataset.mode === ui.mode);
@@ -996,6 +1064,7 @@
     var cnt = subsetCellCount();
     $("subset-count").textContent = t("subsetCount", { n: cnt });
     $("subset-warn").classList.toggle("hidden", cnt > 0);
+    renderPreviewGrid();
   }
 
   // Live count of active cells for the teacher setup (AND semantics),
