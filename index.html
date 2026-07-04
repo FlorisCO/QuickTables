@@ -171,6 +171,27 @@
   .intro { color: var(--muted); font-size: 14px; margin: 16px 0 20px; }
   .btnrow { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
+  /* ---------- mode selector & table pickers ---------- */
+  .seg { display: flex; gap: 6px; flex-wrap: wrap; }
+  #mode-seg { margin-bottom: 14px; }
+  .segbtn, .numbtn {
+    background: var(--bg);
+    border: 1.5px solid var(--line);
+    border-radius: 10px;
+    padding: 8px 14px;
+    font-weight: 700;
+  }
+  .numbtn { min-width: 42px; padding: 8px 0; text-align: center; font-variant-numeric: tabular-nums; }
+  .segbtn.on, .numbtn.on {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: var(--accent);
+  }
+  .modepanel { padding: 2px 0 12px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+  .panel-label { font-weight: 600; font-size: 14px; margin: 10px 0 6px; }
+  .numpick { display: flex; flex-wrap: wrap; gap: 6px; }
+  .hint.warn { color: var(--wrong); font-weight: 700; }
+
   /* ---------- question ---------- */
   .question-card { text-align: center; margin-bottom: 16px; position: relative; overflow: hidden; }
   .question-line {
@@ -274,6 +295,19 @@
     border-radius: 999px;
   }
   .cell.current { background: var(--accent); font-size: 0; }  /* hides the product text */
+  .cell.inactive { opacity: .22; }
+  .cell.missed { background: var(--flash-bad-bg); color: var(--wrong); }
+
+  .mistakes { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 8px; }
+  .miss-chip {
+    background: var(--flash-bad-bg);
+    color: var(--wrong);
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-weight: 700;
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+  }
   .cell.current::after {
     content: "?";
     color: #fff;
@@ -322,6 +356,23 @@
   .banner button { padding: 8px 16px; }
 
   .hidden { display: none !important; }
+
+  /* ---------- phones (not tablets) during play ----------
+     Hide the grid, lock scrolling/rubber-banding, and let the question +
+     keypad fill the whole screen. Matches small coarse-pointer viewports
+     in either orientation; tablets keep the full layout. */
+  button, input, select { touch-action: manipulation; }
+  @media (pointer: coarse) and (max-width: 599px), (pointer: coarse) and (max-height: 499px) {
+    body.playing { position: fixed; inset: 0; overflow: hidden; overscroll-behavior: none; padding: 10px 10px 8px; }
+    body.playing .app { height: 100%; display: flex; flex-direction: column; }
+    body.playing header.top { margin-bottom: 10px; }
+    body.playing #screen-game { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+    body.playing .grid-card { display: none; }
+    body.playing .question-card { margin-bottom: 10px; }
+    body.playing .keypad-card { flex: 1; display: flex; margin-bottom: 0; min-height: 0; }
+    body.playing .keypad { flex: 1; grid-auto-rows: 1fr; }
+    body.playing .keypad button { font-size: 26px; padding: 0; }
+  }
 </style>
 </head>
 <body>
@@ -342,6 +393,34 @@
 
     <!-- ============ START / SETTINGS ============ -->
     <div id="screen-start" class="card">
+      <div class="seg" id="mode-seg">
+        <button type="button" class="segbtn on" data-mode="G" data-i18n="modeGame">Spel</button>
+        <button type="button" class="segbtn" data-mode="P" data-i18n="modePractice">Oefenen</button>
+        <button type="button" class="segbtn" data-mode="T" data-i18n="modeTeacher">Leerkracht</button>
+      </div>
+
+      <div id="panel-teach" class="modepanel hidden">
+        <p class="panel-label" data-i18n="teachPick">Welke tafel wil je oefenen?</p>
+        <div class="numpick" id="teach-nums"></div>
+        <div class="seg small" id="teach-scope" style="margin-top:10px">
+          <button type="button" class="segbtn on" data-scope="B" data-i18n="scopeBoth">Beide</button>
+          <button type="button" class="segbtn" data-scope="R" id="scope-r">7 × ?</button>
+          <button type="button" class="segbtn" data-scope="C" id="scope-c">? × 7</button>
+        </div>
+      </div>
+
+      <div id="panel-subset" class="modepanel hidden">
+        <p class="panel-label"><span data-i18n="subsetRows">Rijen</span>
+          <button type="button" class="linklike" id="rows-all" data-i18n="allToggle">alles aan/uit</button></p>
+        <div class="numpick" id="subset-rows"></div>
+        <p class="panel-label"><span data-i18n="subsetCols">Kolommen</span>
+          <button type="button" class="linklike" id="cols-all" data-i18n="allToggle">alles aan/uit</button></p>
+        <div class="numpick" id="subset-cols"></div>
+        <p class="hint" data-i18n="subsetHint" style="margin-top:8px">Een vakje doet mee als zijn rij én kolom aanstaan.</p>
+        <p class="hint" id="subset-count" style="font-weight:700"></p>
+        <p class="hint warn hidden" id="subset-warn" data-i18n="subsetEmpty">Geen vakjes geselecteerd.</p>
+      </div>
+
       <div class="field">
         <label for="cfg-name"><span data-i18n="nameLabel">Naam</span>
           <span class="hint" data-i18n="nameHint">voor op het certificaat</span>
@@ -418,6 +497,9 @@
         <div class="big-score" id="end-score">0</div>
         <div class="muted" id="end-detail"></div>
         <div class="muted" id="end-best"></div>
+        <p class="muted hidden" id="end-mistakes-label" style="margin-top:14px"></p>
+        <div class="mistakes hidden" id="end-mistakes"></div>
+        <p id="end-encourage" style="margin-top:14px;font-weight:600"></p>
         <div class="btnrow">
           <button class="primary" id="btn-again" data-i18n="again">Opnieuw spelen</button>
           <button id="btn-cert" data-i18n="certBtn">Certificaat (PDF)</button>
@@ -469,6 +551,37 @@
       answerLabel: "Jouw antwoord",
       checkAnswer: "Controleer antwoord",
       keypadLabel: "Toetsenblok op het scherm",
+      modeGame: "Spel",
+      modePractice: "Oefenen",
+      modeTeacher: "Leerkracht",
+      teachPick: "Welke tafel wil je leren?",
+      teachDoneTitle: "Helemaal rond!",
+      teachPerfectTitle: "Alles juist! 🎉",
+      teachElapsed: "Klaar in {t} seconden",
+      teachMistakes: "Deze neem je de volgende keer te grazen:",
+      encourage: [
+        "Goed bezig — die paar lastige komen de volgende keer wel.",
+        "Mooi zo! Nog even naar de rode kijken en je hebt ze allemaal.",
+        "Sterk gespeeld. De foutjes van vandaag zijn de punten van morgen.",
+        "Lekker tempo! Neem de gemiste er nog eens bij en je bent er.",
+        "Bijna! Die laatste paar geven zich zo gewonnen.",
+        "Netjes. Elke poging maakt je sneller — dat merk je de volgende keer."
+      ],
+      encouragePerfect: [
+        "Foutloos! Hier valt niets meer te leren.",
+        "Perfecte score — deze tafel zit erin.",
+        "Alles juist, en nog vlot ook. Tijd voor een moeilijkere tafel?",
+        "Vlekkeloos. Petje af!"
+      ],
+      certCorrect: "juist beantwoord",
+      certDetailsT: "Tafel van {v}  \u00b7  voltooid in {t} s  \u00b7  {q} s per vraag",
+      scopeBoth: "Beide",
+      subsetRows: "Rijen (eerste getal)",
+      subsetCols: "Kolommen (tweede getal)",
+      subsetHint: "Een vakje doet mee als zijn rij \u00e9n kolom aanstaan.",
+      subsetCount: "{n} vakjes doen mee",
+      subsetEmpty: "Geen vakjes geselecteerd \u2014 zet minstens \u00e9\u00e9n rij en \u00e9\u00e9n kolom aan.",
+      allToggle: "alles aan/uit",
       keypadHint: "handig op aanraakschermen",
       backspaceLabel: "Cijfer wissen",
       themeLabel: "Wissel thema",
@@ -509,6 +622,37 @@
       answerLabel: "Your answer",
       checkAnswer: "Check answer",
       keypadLabel: "On-screen keypad",
+      modeGame: "Game",
+      modePractice: "Practice",
+      modeTeacher: "Teacher",
+      teachPick: "Which table do you want to learn?",
+      teachDoneTitle: "All done!",
+      teachPerfectTitle: "All correct! 🎉",
+      teachElapsed: "Done in {t} seconds",
+      teachMistakes: "These are yours for the taking next time:",
+      encourage: [
+        "Nice work — the tricky ones will fall next time.",
+        "Well played! One more look at the red ones and you've got them all.",
+        "Strong run. Today's misses are tomorrow's points.",
+        "Good pace! Revisit the missed ones and you're there.",
+        "So close! Those last few are about to give in.",
+        "Solid. Every attempt makes you faster — you'll feel it next time."
+      ],
+      encouragePerfect: [
+        "Flawless! Nothing left to learn here.",
+        "Perfect score — this table is officially yours.",
+        "All correct, and quick too. Ready for a harder table?",
+        "Spotless. Hats off!"
+      ],
+      certCorrect: "answered correctly",
+      certDetailsT: "Table of {v}  \u00b7  completed in {t} s  \u00b7  {q} s per question",
+      scopeBoth: "Both",
+      subsetRows: "Rows (first number)",
+      subsetCols: "Columns (second number)",
+      subsetHint: "A cell is included when both its row and its column are enabled.",
+      subsetCount: "{n} cells in play",
+      subsetEmpty: "No cells selected \u2014 enable at least one row and one column.",
+      allToggle: "toggle all",
       keypadHint: "handy on touch screens",
       backspaceLabel: "Delete digit",
       themeLabel: "Toggle theme",
@@ -549,6 +693,37 @@
       answerLabel: "Ta r\u00e9ponse",
       checkAnswer: "V\u00e9rifier la r\u00e9ponse",
       keypadLabel: "Clavier \u00e0 l'\u00e9cran",
+      modeGame: "Jeu",
+      modePractice: "Entra\u00eenement",
+      modeTeacher: "Enseignant",
+      teachPick: "Quelle table veux-tu apprendre ?",
+      teachDoneTitle: "Termin\u00e9 !",
+      teachPerfectTitle: "Tout juste ! 🎉",
+      teachElapsed: "Fini en {t} secondes",
+      teachMistakes: "Celles-ci seront \u00e0 toi la prochaine fois :",
+      encourage: [
+        "Beau travail — les plus dures tomberont la prochaine fois.",
+        "Bien jou\u00e9 ! Encore un regard sur les rouges et tu les as toutes.",
+        "Belle partie. Les erreurs d'aujourd'hui sont les points de demain.",
+        "Bon rythme ! Revois celles qui manquent et c'est gagn\u00e9.",
+        "Presque ! Les derni\u00e8res vont bient\u00f4t c\u00e9der.",
+        "Solide. Chaque essai te rend plus rapide — tu le sentiras la prochaine fois."
+      ],
+      encouragePerfect: [
+        "Sans faute ! Plus rien \u00e0 apprendre ici.",
+        "Score parfait — cette table est \u00e0 toi.",
+        "Tout juste, et rapide en plus. Pr\u00eat pour une table plus dure ?",
+        "Impeccable. Chapeau !"
+      ],
+      certCorrect: "bonnes r\u00e9ponses",
+      certDetailsT: "Table de {v}  \u00b7  termin\u00e9e en {t} s  \u00b7  {q} s par question",
+      scopeBoth: "Les deux",
+      subsetRows: "Lignes (premier nombre)",
+      subsetCols: "Colonnes (deuxi\u00e8me nombre)",
+      subsetHint: "Une case participe si sa ligne et sa colonne sont activ\u00e9es.",
+      subsetCount: "{n} cases en jeu",
+      subsetEmpty: "Aucune case s\u00e9lectionn\u00e9e \u2014 active au moins une ligne et une colonne.",
+      allToggle: "tout (dés)activer",
       keypadHint: "pratique sur \u00e9cran tactile",
       backspaceLabel: "Effacer un chiffre",
       themeLabel: "Changer de th\u00e8me",
@@ -598,6 +773,7 @@
     $("kp-back").setAttribute("aria-label", t("backspaceLabel"));
     $("btn-theme").setAttribute("aria-label", t("themeLabel"));
     $("lang").value = lang;
+    refreshModeUI();
     if (!screens.end.classList.contains("hidden")) renderEndTexts();
   }
 
@@ -646,7 +822,12 @@
         game: parseInt($("cfg-game").value, 10) || 60,
         q: parseInt($("cfg-question").value, 10) || 8,
         max: parseInt($("cfg-max").value, 10) || 12,
-        keypad: $("cfg-keypad").checked
+        keypad: $("cfg-keypad").checked,
+        mode: ui.mode,
+        pn: ui.teachNum,
+        psc: ui.teachScope,
+        tr: flagsToHex(ui.sRows),
+        tc: flagsToHex(ui.sCols)
       },
       best: bestScores
     });
@@ -665,6 +846,12 @@
       $("cfg-question").value = clamp(parseInt(saved.settings.q, 10) || 8, 2, 60);
       $("cfg-max").value = clamp(parseInt(saved.settings.max, 10) || 12, 2, 12);
       if (typeof saved.settings.keypad === "boolean") $("cfg-keypad").checked = saved.settings.keypad;
+      if (saved.settings.mode === "G" || saved.settings.mode === "P" || saved.settings.mode === "T") ui.mode = saved.settings.mode;
+      var pn = parseInt(saved.settings.pn, 10);
+      if (pn >= 1 && pn <= 12) ui.teachNum = pn;
+      if (saved.settings.psc === "B" || saved.settings.psc === "R" || saved.settings.psc === "C") ui.teachScope = saved.settings.psc;
+      if (typeof saved.settings.tr === "string") { var trf = hexToFlags(saved.settings.tr); if (Object.keys(trf).length) ui.sRows = trf; }
+      if (typeof saved.settings.tc === "string") { var tcf = hexToFlags(saved.settings.tc); if (Object.keys(tcf).length) ui.sCols = tcf; }
     }
     if (saved.best && typeof saved.best === "object") bestScores = saved.best;
   }
@@ -702,6 +889,16 @@
     presLog: [],          // [[r, c, solved(0/1)], ...] — every question shown, in order
     seed: 0,              // PRNG seed for this game; cell order is replayable from it
     rng: null,
+    mode: "G",            // G = game, P = practice (subset), T = teacher (one table) — set at game start
+    done: null,           // pool-removal flags; in Teacher mode every shown cell is done
+    doneCount: 0,
+    startedAt: 0,
+    elapsedSec: 0,
+    teachNum: 0,          // the practised table in Teacher mode
+    encIdx: 0,            // which encouragement to show (picked at game end)
+    selRows: {},          // enabled rows for this game (1-based flags)
+    selCols: {},          // enabled columns
+    totalSelected: 0,     // number of active cells (row OR column enabled)
     current: null,
     gameDeadline: 0,
     questionDeadline: 0,
@@ -712,7 +909,107 @@
     lastEndNewBest: false
   };
 
-  function cfgKey() { return state.max + "-" + state.gameSec + "-" + state.qSec; }
+  var HEXD = "123456789ABC";   // 1..12 as single characters for compact encoding
+
+  function selStr(flags) {
+    var s = "";
+    for (var i = 1; i <= state.max; i++) if (flags[i]) s += HEXD[i - 1];
+    return s;
+  }
+
+  function cfgKey() {
+    return [state.max, state.gameSec, state.qSec, state.mode,
+            selStr(state.selRows), selStr(state.selCols)].join("-");
+  }
+
+  // Selection semantics are mode-dependent:
+  //   Game/Teacher:  a cell is active when its row OR its column is enabled
+  //   Practice:      a cell is active when its row AND its column are enabled
+  function inSelection(r, c) {
+    if (state.mode === "P") return state.selRows[r] === true && state.selCols[c] === true;
+    return state.selRows[r] === true || state.selCols[c] === true;
+  }
+
+  // Question weights (Game mode only): the easiest factor of a cell
+  // dominates. Any factor of 1, 10 or 11 → weight 2 (1/3 of normal);
+  // factor of 2 → weight 3 (1/2); exception: 11×11 and 11×12 (and mirror)
+  // are the tricky elevens → weight 3. Everything else weight 6.
+  // Practice and Teacher mode always draw uniformly.
+  function cellWeight(r, c) {
+    if (state.mode !== "G") return 1;
+    if (Math.min(r, c) === 11) return 3;
+    if (r === 1 || c === 1 || r === 10 || c === 10 || r === 11 || c === 11) return 2;
+    if (r === 2 || c === 2) return 3;
+    return 6;
+  }
+
+  /* ---------- mode & table-selection UI ---------- */
+
+  var ui = {
+    mode: "G",
+    teachNum: 7,
+    teachScope: "B",             // B = row and column, R = row only, C = column only
+    sRows: fullFlags(),          // Practice-mode subset flags
+    sCols: fullFlags()
+  };
+  function fullFlags() { var a = {}; for (var i = 1; i <= 12; i++) a[i] = true; return a; }
+  function flagsToHex(f) { var s = ""; for (var i = 1; i <= 12; i++) if (f[i]) s += HEXD[i - 1]; return s; }
+  function hexToFlags(s) {
+    var f = {};
+    s = String(s || "").toUpperCase();
+    for (var i = 0; i < s.length; i++) {
+      var v = HEXD.indexOf(s[i]) + 1;
+      if (v >= 1) f[v] = true;
+    }
+    return f;
+  }
+
+  function buildNumButtons(containerId, handler) {
+    var box = $(containerId);
+    box.innerHTML = "";
+    for (var i = 1; i <= 12; i++) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "numbtn";
+      b.textContent = i;
+      b.dataset.v = i;
+      b.addEventListener("click", handler);
+      box.appendChild(b);
+    }
+  }
+
+  function refreshModeUI() {
+    var segs = $("mode-seg").querySelectorAll(".segbtn");
+    for (var i = 0; i < segs.length; i++) segs[i].classList.toggle("on", segs[i].dataset.mode === ui.mode);
+    $("panel-teach").classList.toggle("hidden", ui.mode !== "T");
+    $("panel-subset").classList.toggle("hidden", ui.mode !== "P");
+    $("cfg-game").closest(".field").classList.toggle("hidden", ui.mode === "T");   // no game time in Teacher mode
+    var nb = $("teach-nums").children;
+    for (var j = 0; j < nb.length; j++) nb[j].classList.toggle("on", +nb[j].dataset.v === ui.teachNum);
+    $("scope-r").textContent = ui.teachNum + " × ?";
+    $("scope-c").textContent = "? × " + ui.teachNum;
+    var sc = $("teach-scope").querySelectorAll(".segbtn");
+    for (var k = 0; k < sc.length; k++) sc[k].classList.toggle("on", sc[k].dataset.scope === ui.teachScope);
+    var tr = $("subset-rows").children, tc = $("subset-cols").children;
+    for (var m = 0; m < tr.length; m++) tr[m].classList.toggle("on", !!ui.sRows[+tr[m].dataset.v]);
+    for (var n = 0; n < tc.length; n++) tc[n].classList.toggle("on", !!ui.sCols[+tc[n].dataset.v]);
+    var cnt = subsetCellCount();
+    $("subset-count").textContent = t("subsetCount", { n: cnt });
+    $("subset-warn").classList.toggle("hidden", cnt > 0);
+  }
+
+  // Live count of active cells for the teacher setup (AND semantics),
+  // within the current grid size.
+  function subsetCellCount() {
+    var maxV = clamp(parseInt($("cfg-max").value, 10) || 12, 2, 12);
+    var n = 0;
+    for (var r = 1; r <= maxV; r++) {
+      for (var c = 1; c <= maxV; c++) {
+        if (ui.sRows[r] && ui.sCols[c]) n++;
+      }
+    }
+    return n;
+  }
 
   function show(name) {
     for (var k in screens) screens[k].classList.toggle("hidden", k !== name);
@@ -729,7 +1026,7 @@
     for (var r = 1; r <= state.max; r++) {
       g.appendChild(cellEl(r, "hdr", "hr-" + r));
       for (var c2 = 1; c2 <= state.max; c2++) {
-        g.appendChild(cellEl(r * c2, "", "cell-" + r + "-" + c2));
+        g.appendChild(cellEl(r * c2, inSelection(r, c2) ? "" : "inactive", "cell-" + r + "-" + c2));
       }
     }
   }
@@ -752,6 +1049,19 @@
 
   // Solved cells get a hue that shifts diagonally across the grid
   // (teal -> violet). Lightness lives in CSS so it adapts to the theme.
+  function consume(r, c) {   // remove a cell from the draw pool
+    if (!state.done[r][c]) { state.done[r][c] = true; state.doneCount++; }
+  }
+
+  // Teacher mode: a missed cell shows its correct product in the grid,
+  // so the answer is taught the moment it's missed.
+  function markWrong(r, c) {
+    var el = $("cell-" + r + "-" + c);
+    if (!el) return;
+    el.classList.remove("current");
+    el.classList.add("missed");
+  }
+
   function markSolved(r, c) {
     var el = $("cell-" + r + "-" + c);
     if (!el) return;
@@ -768,6 +1078,41 @@
     state.qSec = clamp(parseInt($("cfg-question").value, 10) || 8, 2, 60);
     state.max = clamp(parseInt($("cfg-max").value, 10) || 12, 2, 12);
     state.questionMs = state.qSec * 1000;
+
+    // active-cell selection for this game, from the chosen mode
+    state.mode = ui.mode;
+    state.selRows = {};
+    state.selCols = {};
+    if (state.mode === "G") {
+      for (var g1 = 1; g1 <= state.max; g1++) { state.selRows[g1] = true; state.selCols[g1] = true; }
+    } else if (state.mode === "T") {          // Teacher: one table, once-through
+      var pv = Math.min(ui.teachNum, state.max);
+      state.teachNum = pv;
+      if (ui.teachScope !== "C") state.selRows[pv] = true;
+      if (ui.teachScope !== "R") state.selCols[pv] = true;
+    } else {                                    // Practice: row × column subset
+      for (var t1 = 1; t1 <= state.max; t1++) {
+        if (ui.sRows[t1]) state.selRows[t1] = true;
+        if (ui.sCols[t1]) state.selCols[t1] = true;
+      }
+    }
+    state.totalSelected = 0;
+    for (var vr = 1; vr <= state.max; vr++) {
+      for (var vc = 1; vc <= state.max; vc++) {
+        if (inSelection(vr, vc)) state.totalSelected++;
+      }
+    }
+    if (state.totalSelected === 0) {          // e.g. teacher enabled only tables above the grid size
+      $("subset-warn").classList.remove("hidden");
+      return;
+    }
+    state.done = [];                            // pool-removal flags (Teacher: shown once = gone)
+    for (var d1 = 1; d1 <= state.max; d1++) {
+      state.done[d1] = [];
+      for (var d2 = 1; d2 <= state.max; d2++) state.done[d1][d2] = false;
+    }
+    state.doneCount = 0;
+
     persist();   // remember settings for next visit (if consented)
 
     state.solved = [];
@@ -782,11 +1127,15 @@
     state.rng = mulberry32(state.seed);
     state.current = null;
     state.running = true;
-    state.gameDeadline = Date.now() + state.gameSec * 1000;
+    state.startedAt = Date.now();
+    // Teacher mode has no overall time limit; the session ends when every
+    // cell has been shown once. Infinity keeps the deadline check inert.
+    state.gameDeadline = state.mode === "T" ? Infinity : Date.now() + state.gameSec * 1000;
 
     buildGrid();
     updateStatus();
     show("game");
+    document.body.classList.add("playing");   // phone layout: full-screen question + keypad
 
     var kp = keypadOn();
     $("keypad").classList.toggle("hidden", !kp);
@@ -806,37 +1155,49 @@
   function nextQuestion() {
     if (state.current) setCurrentCell(state.current.r, state.current.c, false);
 
-    var total = state.max * state.max;
-    if (state.solvedCount >= total) { endGame(true); return; }
+    if (state.doneCount >= state.totalSelected) { endGame(true); return; }
+    var remainingSel = state.totalSelected - state.doneCount;
 
-    var remaining = total - state.solvedCount;
     // Cells excluded from this draw: the previous question (if unsolved)
-    // and its commutative mirror y×x (if unsolved) — so neither the same
-    // question nor its transposed twin appears back-to-back. Exclusions
-    // are dropped (mirror first) if they would empty the pool.
-    // NOTE: this rule is part of the replayable sequence — verify.html
-    // implements the identical exclusion.
+    // and its commutative mirror y×x (if unsolved and in the selection) —
+    // so neither the same question nor its transposed twin appears
+    // back-to-back. Exclusions are dropped (mirror first) if they would
+    // empty the pool. NOTE: this rule and the weights below are part of
+    // the replayable sequence — verify.html implements them identically.
     var prev = state.current;
     var excl = [];
     if (prev) {
-      if (!state.solved[prev.r][prev.c]) excl.push([prev.r, prev.c]);
-      if (prev.r !== prev.c && !state.solved[prev.c][prev.r]) excl.push([prev.c, prev.r]);
-      while (excl.length && remaining - excl.length < 1) excl.pop();
+      if (!state.done[prev.r][prev.c] && inSelection(prev.r, prev.c)) excl.push([prev.r, prev.c]);
+      if (prev.r !== prev.c && !state.done[prev.c][prev.r] && inSelection(prev.c, prev.r)) excl.push([prev.c, prev.r]);
+      while (excl.length && remainingSel - excl.length < 1) excl.pop();
     }
-    var poolSize = remaining - excl.length;
-    var pick = Math.floor(state.rng() * poolSize);   // seeded: replayable draw
-    var r = 0, c = 0, i = 0;
-    outer:
+
+    // weighted draw over eligible cells (uniform weights outside Game mode)
+    var W = 0, r, c, e, isExcl;
     for (r = 1; r <= state.max; r++) {
       for (c = 1; c <= state.max; c++) {
-        if (state.solved[r][c]) continue;
-        var isExcl = false;
-        for (var e = 0; e < excl.length; e++) {
+        if (state.done[r][c] || !inSelection(r, c)) continue;
+        isExcl = false;
+        for (e = 0; e < excl.length; e++) {
           if (excl[e][0] === r && excl[e][1] === c) { isExcl = true; break; }
         }
         if (isExcl) continue;
-        if (i === pick) break outer;
-        i++;
+        W += cellWeight(r, c);
+      }
+    }
+    var pick = Math.floor(state.rng() * W);   // seeded: replayable draw
+    var acc = 0;
+    outer:
+    for (r = 1; r <= state.max; r++) {
+      for (c = 1; c <= state.max; c++) {
+        if (state.done[r][c] || !inSelection(r, c)) continue;
+        isExcl = false;
+        for (e = 0; e < excl.length; e++) {
+          if (excl[e][0] === r && excl[e][1] === c) { isExcl = true; break; }
+        }
+        if (isExcl) continue;
+        acc += cellWeight(r, c);
+        if (pick < acc) break outer;
       }
     }
 
@@ -862,9 +1223,14 @@
       state.solvedCount++;
       state.score++;
       markSolved(cur.r, cur.c);
+      consume(cur.r, cur.c);
       flash(true);
     } else {
       flash(false);
+      if (state.mode === "T") {            // Teacher: no do-overs — shown once, then gone
+        consume(cur.r, cur.c);
+        markWrong(cur.r, cur.c);
+      }
     }
     updateStatus();
     nextQuestion();
@@ -876,6 +1242,10 @@
       submitAnswer();          // a number was entered: check it, like the original
     } else {
       flash(false);
+      if (state.mode === "T" && state.current) {   // Teacher: a timeout also spends the cell
+        consume(state.current.r, state.current.c);
+        markWrong(state.current.r, state.current.c);
+      }
       nextQuestion();          // too slow: new cell
     }
   }
@@ -895,19 +1265,27 @@
 
   function endGame(allSolved) {
     state.running = false;
+    document.body.classList.remove("playing");
     if (state.tickHandle) { clearInterval(state.tickHandle); state.tickHandle = null; }
     if (state.current) setCurrentCell(state.current.r, state.current.c, false);
 
-    var key = cfgKey();
-    state.lastEndNewBest = state.score > 0 && state.score > (bestScores[key] || 0);
-    if (state.lastEndNewBest) {
-      bestScores[key] = state.score;
-      persist();
+    state.elapsedSec = Math.max(1, Math.round((Date.now() - state.startedAt) / 1000));
+    state.encIdx = Math.floor(Math.random() * 1000);   // stable pick for this game's encouragement
+
+    if (state.mode === "T") {
+      state.lastEndNewBest = false;      // Teacher mode is deliberately non-competitive
+    } else {
+      var key = cfgKey();
+      state.lastEndNewBest = state.score > 0 && state.score > (bestScores[key] || 0);
+      if (state.lastEndNewBest) {
+        bestScores[key] = state.score;
+        persist();
+      }
     }
     state.lastEndAllSolved = allSolved;
 
     renderEndTexts();
-    $("st-time").textContent = "0";
+    $("st-time").textContent = state.mode === "T" ? state.elapsedSec : "0";
     show("end");
     armEndScreen();
   }
@@ -948,12 +1326,46 @@
     }, 100);
   }
 
+  function encouragementText(perfect) {
+    var L = STRINGS[lang] || STRINGS.en;
+    var arr = (perfect ? L.encouragePerfect : L.encourage) ||
+              (perfect ? STRINGS.en.encouragePerfect : STRINGS.en.encourage);
+    return arr[state.encIdx % arr.length];
+  }
+
   function renderEndTexts() {
-    $("end-title").textContent = state.lastEndAllSolved ? t("allSolved") : t("timeUp");
-    $("end-score").textContent = state.score;
-    $("end-detail").textContent = t("solvedDetail", { n: state.solvedCount, total: state.max * state.max });
-    var best = bestScores[cfgKey()] || 0;
-    $("end-best").textContent = (state.lastEndNewBest ? t("newBest") + " " : "") + t("bestScore", { n: best });
+    var mBox = $("end-mistakes"), mLabel = $("end-mistakes-label");
+    if (state.mode === "T") {
+      var x = 0;
+      state.presLog.forEach(function (e) { if (e[2] === 1) x++; });
+      var y = state.totalSelected;
+      var perfect = x === y;
+      $("end-title").textContent = perfect ? t("teachPerfectTitle") : t("teachDoneTitle");
+      $("end-score").textContent = x + " / " + y;
+      $("end-detail").textContent = t("teachElapsed", { t: state.elapsedSec });
+      $("end-best").textContent = "";
+      mBox.innerHTML = "";
+      var misses = state.presLog.filter(function (e) { return e[2] === 0; });
+      misses.forEach(function (e) {
+        var chip = document.createElement("span");
+        chip.className = "miss-chip";
+        chip.textContent = e[0] + " × " + e[1] + " = " + (e[0] * e[1]);
+        mBox.appendChild(chip);
+      });
+      mLabel.textContent = t("teachMistakes");
+      mLabel.classList.toggle("hidden", misses.length === 0);
+      mBox.classList.toggle("hidden", misses.length === 0);
+      $("end-encourage").textContent = encouragementText(perfect);
+    } else {
+      $("end-title").textContent = state.lastEndAllSolved ? t("allSolved") : t("timeUp");
+      $("end-score").textContent = state.score;
+      $("end-detail").textContent = t("solvedDetail", { n: state.solvedCount, total: state.totalSelected });
+      var best = bestScores[cfgKey()] || 0;
+      $("end-best").textContent = (state.lastEndNewBest ? t("newBest") + " " : "") + t("bestScore", { n: best });
+      mLabel.classList.add("hidden");
+      mBox.classList.add("hidden");
+      $("end-encourage").textContent = "";
+    }
   }
 
   /* ================= PDF certificate ================= */
@@ -1124,15 +1536,28 @@
   }
 
   // Version of the draw/replay algorithm. Bump this whenever the cell-pick
-  // rules change (exclusions, PRNG, scan order, format); the verifier keeps
-  // one replay implementation per version so old certificates stay checkable.
-  // History: 2.0 = seeded mulberry32, prev question + commutative mirror
-  // excluded from the next draw when unsolved (dropped mirror-first if the
-  // pool would empty).
-  var PROOF_VERSION = "2.0";
+  // rules change (exclusions, PRNG, scan order, weights, format); the
+  // verifier keeps one replay implementation per version so old
+  // certificates stay checkable.
+  // History:
+  //   2.0 = seeded mulberry32; prev question + commutative mirror excluded
+  //         from the next draw when unsolved (dropped mirror-first if the
+  //         pool would empty); uniform weights; full grid.
+  //   3.0 = adds mode (G/P/T) and enabled rows/columns to the format.
+  //         G (Game): full grid, OR selection, weighted draws, timed
+  //           session, misses return to the pool.
+  //         P (Practice): row AND column subset, uniform draws, timed
+  //           session, misses return to the pool.
+  //         T (Teacher): one table (OR selection), uniform draws, no
+  //           session time (time slot holds elapsed seconds), once-through:
+  //           every shown cell leaves the pool whatever the outcome.
+  //         Prev + commutative-mirror exclusion applies in all modes.
+  var PROOF_VERSION = "3.0";
 
   // The plain-text proof line printed on the certificate:
-  //   version|name|tablesMax|gameSeconds|questionSeconds|seedHex|score|sequence
+  //   version|name|tablesMax|gameSeconds|questionSeconds|mode|rows|cols|seedHex|score|sequence
+  // rows/cols encode the enabled tables as single characters (1-9, A=10,
+  // B=11, C=12); mode is G, P or T.
   // The sequence lists EVERY question shown, in the order it was shown:
   // "r.c+" (solved) or "r.c-" (wrong / timed out). Each shown question
   // consumed exactly one PRNG draw, so the whole sequence must replay
@@ -1145,7 +1570,11 @@
     var seq = state.presLog.map(function (e) {
       return e[0] + "." + e[1] + (e[2] === 1 ? "+" : "-");
     }).join(",");
-    return [PROOF_VERSION, safe, state.max, state.gameSec, state.qSec, seedHex, score, seq].join("|");
+    // Teacher mode has no preset game time, so the game-seconds slot holds
+    // the elapsed completion time instead (informational; not used in replay).
+    var timeField = state.mode === "T" ? state.elapsedSec : state.gameSec;
+    return [PROOF_VERSION, safe, state.max, timeField, state.qSec, state.mode,
+            selStr(state.selRows), selStr(state.selCols), seedHex, score, seq].join("|");
   }
 
   function downloadCertificate() {
@@ -1181,14 +1610,17 @@
     var half = Math.max(nameW, 140) / 2 + 20;
     p.line(cx - half, 470, cx + half, 470, 0.8, GOLD);
 
-    // score
-    var scoreStr = String(score);
-    p.textCentered(scoreStr, 366, 84, 2, ACCENT);
-    p.textCentered(t("certPoints"), 340, 15, 1, GRAY);
-
-    // settings line (so certificates are only comparable for equal settings)
-    p.textCentered(t("certDetails", { max: state.max, game: state.gameSec, q: state.qSec }), 282, 13, 1, GRAY);
-    p.textCentered(t("solvedDetail", { n: state.solvedCount, total: state.max * state.max }), 260, 13, 1, GRAY);
+    // score — Teacher mode shows x/y (correct out of all shown, once each)
+    if (state.mode === "T") {
+      p.textCentered(score + " / " + state.totalSelected, 366, 64, 2, ACCENT);
+      p.textCentered(t("certCorrect"), 340, 15, 1, GRAY);
+      p.textCentered(t("certDetailsT", { v: state.teachNum, t: state.elapsedSec, q: state.qSec }), 282, 13, 1, GRAY);
+    } else {
+      p.textCentered(String(score), 366, 84, 2, ACCENT);
+      p.textCentered(t("certPoints"), 340, 15, 1, GRAY);
+      p.textCentered(t("certDetails", { max: state.max, game: state.gameSec, q: state.qSec }), 282, 13, 1, GRAY);
+      p.textCentered(t("solvedDetail", { n: state.solvedCount, total: state.totalSelected }), 260, 13, 1, GRAY);
+    }
 
     // date, verification code, and the proof text it was derived from
     var dateStr = new Date().toLocaleDateString(LOCALES[lang] || "en-GB",
@@ -1209,7 +1641,7 @@
     var bytes = buildPdf(p.stream());
     var blob = new Blob([bytes], { type: "application/pdf" });
     var safeName = name.replace(/[^\w\-]+/g, "_").replace(/^_+|_+$/g, "") || "certificaat";
-    var filename = "QuickTables-" + safeName + ".pdf";
+    var filename = "maaltafels-" + safeName + ".pdf";
 
     // iOS WebKit (Safari, Firefox, Chrome are all WebKit there) frequently
     // ignores/mishandles the `download` attribute for blob: PDF URLs, so an
@@ -1244,9 +1676,16 @@
   function updateStatus() {
     $("st-score").textContent = state.score;
     if (state.running) {
-      var secs = Math.max(0, Math.ceil((state.gameDeadline - Date.now()) / 1000));
-      $("st-time").textContent = secs;
-      $("chip-time").classList.toggle("time-low", secs <= 10);
+      var secs;
+      if (state.mode === "T") {          // no limit: elapsed time counts up
+        secs = Math.floor((Date.now() - state.startedAt) / 1000);
+        $("st-time").textContent = secs;
+        $("chip-time").classList.remove("time-low");
+      } else {
+        secs = Math.max(0, Math.ceil((state.gameDeadline - Date.now()) / 1000));
+        $("st-time").textContent = secs;
+        $("chip-time").classList.toggle("time-low", secs <= 10);
+      }
     }
   }
 
@@ -1273,6 +1712,36 @@
     $("btn-start").focus();
   });
   $("btn-cert").addEventListener("click", downloadCertificate);
+
+  $("mode-seg").addEventListener("click", function (e) {
+    var b = e.target.closest(".segbtn");
+    if (!b) return;
+    ui.mode = b.dataset.mode;
+    refreshModeUI();
+    persist();
+  });
+  $("teach-scope").addEventListener("click", function (e) {
+    var b = e.target.closest(".segbtn");
+    if (!b) return;
+    ui.teachScope = b.dataset.scope;
+    refreshModeUI();
+    persist();
+  });
+  function toggleSubset(flags, v) {
+    if (flags[v]) delete flags[v]; else flags[v] = true;
+    refreshModeUI();
+    persist();
+  }
+  function setAll(flags, on) {
+    for (var i = 1; i <= 12; i++) { if (on) flags[i] = true; else delete flags[i]; }
+  }
+  function allOn(flags) {
+    for (var i = 1; i <= 12; i++) if (!flags[i]) return false;
+    return true;
+  }
+  $("rows-all").addEventListener("click", function () { setAll(ui.sRows, !allOn(ui.sRows)); refreshModeUI(); persist(); });
+  $("cols-all").addEventListener("click", function () { setAll(ui.sCols, !allOn(ui.sCols)); refreshModeUI(); persist(); });
+  $("cfg-max").addEventListener("input", refreshModeUI);
 
   $("btn-theme").addEventListener("click", function () {
     theme = theme === "dark" ? "light" : "dark";
@@ -1402,8 +1871,12 @@
   });
 
   /* ---------- init ---------- */
+  buildNumButtons("teach-nums", function () { ui.teachNum = +this.dataset.v; refreshModeUI(); persist(); });
+  buildNumButtons("subset-rows", function () { toggleSubset(ui.sRows, +this.dataset.v); });
+  buildNumButtons("subset-cols", function () { toggleSubset(ui.sCols, +this.dataset.v); });
   $("cfg-keypad").checked = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
   loadStored();
+  refreshModeUI();
   applyTheme();
   applyLang();
   updateBannerAndClear();

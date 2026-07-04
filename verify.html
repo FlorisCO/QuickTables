@@ -62,7 +62,7 @@
   </p>
   <div class="card">
     <textarea id="input" spellcheck="false"
-      placeholder="2.0|Naam|12|60|8|1A2B3C4D|42|7.8+,3.4-,9.2+,..."></textarea>
+      placeholder="3.0|Naam|12|60|8|G|123456789ABC|123456789ABC|1A2B3C4D|42|7.8+,3.4-,..."></textarea>
     <button id="run">Verify</button>
     <div id="result"></div>
   </div>
@@ -159,53 +159,171 @@
     return { failAt: -1, expected: null, got: null, solvedCount: solvedCount };
   }
 
+  // v3.0 — like v2.0, plus: a mode (G/P/T) and enabled rows/columns are
+  // part of the proof.
+  //   G (Game): full grid, OR selection, weighted draws; misses stay in
+  //     the pool.
+  //   P (Practice): row AND column subset, uniform draws; misses stay in
+  //     the pool.
+  //   T (Teacher): one table (OR selection), uniform draws, once-through:
+  //     every shown cell leaves the pool whatever the outcome; the
+  //     game-seconds field holds elapsed completion time (informational).
+  // The prev + commutative-mirror exclusion applies in all modes.
+  function replayV30(seed, max, mode, rowsHex, colsHex, tokens) {
+    var HEXD = "123456789ABC";
+    var selRows = {}, selCols = {}, i, r, c;
+    for (i = 0; i < rowsHex.length; i++) selRows[HEXD.indexOf(rowsHex[i]) + 1] = true;
+    for (i = 0; i < colsHex.length; i++) selCols[HEXD.indexOf(colsHex[i]) + 1] = true;
+    function inSel(r, c) {
+      if (mode === "P") return selRows[r] === true && selCols[c] === true;
+      return selRows[r] === true || selCols[c] === true;
+    }
+    function weight(r, c) {
+      if (mode !== "G") return 1;
+      if (Math.min(r, c) === 11) return 3;
+      if (r === 1 || c === 1 || r === 10 || c === 10 || r === 11 || c === 11) return 2;
+      if (r === 2 || c === 2) return 3;
+      return 6;
+    }
+    var totalSel = 0;
+    for (r = 1; r <= max; r++) for (c = 1; c <= max; c++) if (inSel(r, c)) totalSel++;
+    if (totalSel === 0) {
+      return { failAt: 0, expected: "a non-empty table selection", got: "rows=" + rowsHex + " cols=" + colsHex, solvedCount: 0 };
+    }
+
+    var rng = mulberry32(seed);
+    var done = {};                       // removed from the draw pool
+    var doneCount = 0;
+    var solvedCount = 0;                 // correct answers (the score)
+    var prevR = 0, prevC = 0;
+
+    for (i = 0; i < tokens.length; i++) {
+      var m = /^(\d+)\.(\d+)([+-])$/.exec(tokens[i]);
+      if (!m) return { failAt: i, expected: "r.c+ or r.c-", got: tokens[i], solvedCount: solvedCount };
+      r = parseInt(m[1], 10); c = parseInt(m[2], 10);
+
+      var remainingSel = totalSel - doneCount;
+      var excl = [];
+      if (prevR !== 0) {
+        if (!done[prevR + "-" + prevC] && inSel(prevR, prevC)) excl.push([prevR, prevC]);
+        if (prevR !== prevC && !done[prevC + "-" + prevR] && inSel(prevC, prevR)) excl.push([prevC, prevR]);
+        while (excl.length && remainingSel - excl.length < 1) excl.pop();
+      }
+
+      var W = 0, er, ec, x, isExcl;
+      for (er = 1; er <= max; er++) {
+        for (ec = 1; ec <= max; ec++) {
+          if (done[er + "-" + ec] || !inSel(er, ec)) continue;
+          isExcl = false;
+          for (x = 0; x < excl.length; x++) if (excl[x][0] === er && excl[x][1] === ec) { isExcl = true; break; }
+          if (isExcl) continue;
+          W += weight(er, ec);
+        }
+      }
+      var pick = Math.floor(rng() * W);
+      var acc = 0;
+      outer:
+      for (er = 1; er <= max; er++) {
+        for (ec = 1; ec <= max; ec++) {
+          if (done[er + "-" + ec] || !inSel(er, ec)) continue;
+          isExcl = false;
+          for (x = 0; x < excl.length; x++) if (excl[x][0] === er && excl[x][1] === ec) { isExcl = true; break; }
+          if (isExcl) continue;
+          acc += weight(er, ec);
+          if (pick < acc) break outer;
+        }
+      }
+      if (er !== r || ec !== c) {
+        return { failAt: i, expected: er + "." + ec, got: r + "." + c, solvedCount: solvedCount };
+      }
+      if (m[3] === "+") solvedCount++;
+      if (mode === "T" || m[3] === "+") {   // Teacher: shown once = out of the pool
+        done[r + "-" + c] = true;
+        doneCount++;
+      }
+      prevR = r; prevC = c;
+    }
+    return { failAt: -1, expected: null, got: null, solvedCount: solvedCount };
+  }
+
   var ALGORITHMS = {
-    "2.0": replayV20
-    // future: "3.0": replayV30, ... — never delete old entries
+    "2.0": replayV20,
+    "3.0": replayV30
+    // future: "4.0": replayV40, ... — never delete old entries
   };
 
   /* ---------------------------- verification --------------------------- */
-  // Proof line format (from version 2.0 onward):
-  //   version|name|tablesMax|gameSeconds|questionSeconds|seedHex|score|sequence
+  // Proof line formats:
+  //   v2.0: version|name|max|gameSec|qSec|seedHex|score|sequence           (8 fields)
+  //   v3.0: version|name|max|gameSec|qSec|mode|rows|cols|seedHex|score|seq (11 fields)
+  var FIELD_COUNTS = { "2.0": 8, "3.0": 11 };
+
   function verify(raw) {
     var text = (raw || "").replace(/\s+/g, "");
     if (!text) return { error: "Nothing to verify." };
     var parts = text.split("|");
-    if (parts.length !== 8) return { error: "Expected 8 fields separated by | — got " + parts.length + "." };
 
     var version = parts[0];
     if (!/^\d+(\.\d+)?$/.test(version)) return { error: "First field is not a version number." };
-    var replay = ALGORITHMS[version];
-    if (!replay) {
+    if (!ALGORITHMS[version]) {
       return { error: "Unknown algorithm version " + version + " — this verifier supports: " +
         Object.keys(ALGORITHMS).join(", ") + ". A newer copy of this page may be needed." };
+    }
+    if (parts.length !== FIELD_COUNTS[version]) {
+      return { error: "Version " + version + " expects " + FIELD_COUNTS[version] +
+        " fields separated by | — got " + parts.length + "." };
     }
 
     var name = parts[1];
     var max = parseInt(parts[2], 10), gameSec = parseInt(parts[3], 10),
-        qSec = parseInt(parts[4], 10), declaredScore = parseInt(parts[6], 10);
-    if (!(max >= 2 && max <= 12) || !gameSec || !qSec || isNaN(declaredScore)) {
+        qSec = parseInt(parts[4], 10);
+    if (!(max >= 2 && max <= 12) || !gameSec || !qSec) {
       return { error: "Settings fields are not valid numbers." };
     }
-    if (!/^[0-9A-F]{8}$/i.test(parts[5])) return { error: "Seed is not 8 hex characters." };
-    var seed = parseInt(parts[5], 16);
 
-    var tokens = parts[7] === "" ? [] : parts[7].split(",");
-    var rep = replay(seed, max, tokens);
+    var mode = null, rowsHex = "", colsHex = "", seedField, scoreField, seqField;
+    if (version === "2.0") {
+      seedField = parts[5]; scoreField = parts[6]; seqField = parts[7];
+    } else {
+      mode = parts[5];
+      if (mode !== "G" && mode !== "P" && mode !== "T") return { error: "Mode must be G, P or T." };
+      rowsHex = parts[6].toUpperCase(); colsHex = parts[7].toUpperCase();
+      if (!/^[1-9A-C]*$/.test(rowsHex) || !/^[1-9A-C]*$/.test(colsHex)) {
+        return { error: "Rows/columns fields contain invalid characters." };
+      }
+      seedField = parts[8]; scoreField = parts[9]; seqField = parts[10];
+    }
+
+    var declaredScore = parseInt(scoreField, 10);
+    if (isNaN(declaredScore)) return { error: "Score is not a number." };
+    if (!/^[0-9A-F]{8}$/i.test(seedField)) return { error: "Seed is not 8 hex characters." };
+    var seed = parseInt(seedField, 16);
+
+    var tokens = seqField === "" ? [] : seqField.split(",");
+    var rep = (version === "2.0")
+      ? replayV20(seed, max, tokens)
+      : replayV30(seed, max, mode, rowsHex, colsHex, tokens);
 
     return {
       version: version,
       name: name.replace(/_/g, " "),
       max: max, gameSec: gameSec, qSec: qSec,
+      mode: mode, rowsHex: rowsHex, colsHex: colsHex,
       declaredScore: declaredScore,
       replayedScore: rep.solvedCount,
       questionsShown: tokens.length,
-      seedHex: parts[5].toUpperCase(),
+      seedHex: seedField.toUpperCase(),
       seqOk: rep.failAt === -1,
       failAt: rep.failAt, expected: rep.expected, got: rep.got,
       scoreOk: rep.failAt === -1 && rep.solvedCount === declaredScore,
       code: codeFromText(text)
     };
+  }
+
+  function hexToList(s) {
+    var HEXD = "123456789ABC", out = [];
+    for (var i = 0; i < s.length; i++) out.push(HEXD.indexOf(s[i]) + 1);
+    return out.join(", ");
   }
 
   function esc(s) {
@@ -228,7 +346,15 @@
     html += '<table>';
     html += '<tr><td>Algorithm version</td><td class="mono">' + esc(res.version) + '</td></tr>';
     html += '<tr><td>Player</td><td>' + esc(res.name) + '</td></tr>';
-    html += '<tr><td>Settings</td><td>tables up to ' + res.max + ' · ' + res.gameSec + ' s game · ' + res.qSec + ' s per question</td></tr>';
+    html += '<tr><td>Settings</td><td>tables up to ' + res.max + ' · ' +
+      (res.mode === "T" ? 'completed in ' + res.gameSec + ' s' : res.gameSec + ' s game') +
+      ' · ' + res.qSec + ' s per question</td></tr>';
+    if (res.mode) {
+      var modeName = { G: "Game (weighted draws)", P: "Practice (row \u00d7 column subset)", T: "Teacher (one table, once-through)" }[res.mode];
+      html += '<tr><td>Mode</td><td>' + modeName + '</td></tr>';
+      html += '<tr><td>Enabled tables</td><td>rows: ' + (esc(hexToList(res.rowsHex)) || "—") +
+              ' · columns: ' + (esc(hexToList(res.colsHex)) || "—") + '</td></tr>';
+    }
     html += '<tr><td>Seed</td><td class="mono">' + esc(res.seedHex) + '</td></tr>';
     html += '<tr><td>Questions shown</td><td>' + res.questionsShown + '</td></tr>';
     html += '<tr><td>Sequence replay</td><td class="check ' + (res.seqOk ? 'ok' : 'bad') + '">' +
